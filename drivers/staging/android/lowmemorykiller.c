@@ -410,11 +410,20 @@ static struct task_struct *pick_first_task(void);
 static struct task_struct *pick_last_task(void);
 #endif
 
-static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
+static unsigned long lowmem_count(struct shrinker *s,
+				  struct shrink_control *sc)
+{
+	return global_page_state(NR_ACTIVE_ANON) +
+		global_page_state(NR_ACTIVE_FILE) +
+		global_page_state(NR_INACTIVE_ANON) +
+		global_page_state(NR_INACTIVE_FILE);
+}
+
+static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 {
 	struct task_struct *tsk;
 	struct task_struct *selected = NULL;
-	int rem = 0;
+	unsigned long rem = 0;
 	int tasksize;
 	int i;
 	int ret = 0;
@@ -425,7 +434,6 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	int array_size = ARRAY_SIZE(lowmem_adj);
 	int other_free;
 	int other_file;
-	unsigned long nr_to_scan = sc->nr_to_scan;
 	struct zone_avail zall[MAX_NUMNODES][MAX_NR_ZONES];
 
 	rcu_read_lock();
@@ -437,10 +445,8 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	}
 	rcu_read_unlock();
 
-	if (nr_to_scan > 0) {
-		if (mutex_lock_interruptible(&scan_mutex) < 0)
-			return 0;
-	}
+	if (mutex_lock_interruptible(&scan_mutex) < 0)
+		return 0;
 
 	other_free = global_page_state(NR_FREE_PAGES);
 
@@ -466,30 +472,24 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			break;
 		}
 	}
-	if (nr_to_scan > 0) {
-		ret = adjust_minadj(&min_score_adj);
-		lowmem_print(3, "lowmem_shrink %lu, %x, ofree %d %d, ma %hd\n",
-				nr_to_scan, sc->gfp_mask, other_free,
-				other_file, min_score_adj);
-	}
+	ret = adjust_minadj(&min_score_adj);
 
-	rem = global_page_state(NR_ACTIVE_ANON) +
-		global_page_state(NR_ACTIVE_FILE) +
-		global_page_state(NR_INACTIVE_ANON) +
-		global_page_state(NR_INACTIVE_FILE);
-	if (nr_to_scan <= 0 || min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
-		lowmem_print(5, "lowmem_shrink %lu, %x, return %d\n",
-			     nr_to_scan, sc->gfp_mask, rem);
+	lowmem_print(3, "lowmem_scan %lu, %x, ofree %d %d, ma %hd\n",
+			sc->nr_to_scan, sc->gfp_mask, other_free,
+			other_file, min_score_adj);
 
-		if (nr_to_scan > 0)
-			mutex_unlock(&scan_mutex);
+	if (min_score_adj == OOM_SCORE_ADJ_MAX + 1) {
+		lowmem_print(5, "lowmem_scan %lu, %x, return 0\n",
+			     sc->nr_to_scan, sc->gfp_mask);
 
-		if ((min_score_adj == OOM_SCORE_ADJ_MAX + 1) &&
-			(nr_to_scan > 0))
+		mutex_unlock(&scan_mutex);
+
+		if (min_score_adj == OOM_SCORE_ADJ_MAX + 1)
 			trace_almk_shrink(0, ret, other_free, other_file, 0);
 
-		return rem;
+		return 0;
 	}
+
 	selected_oom_score_adj = min_score_adj;
 
 	rcu_read_lock();
@@ -565,7 +565,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		selected_tasksize = tasksize;
 		selected_oom_score_adj = oom_score_adj;
 		lowmem_print(3, "select '%s' (%d), adj %hd, size %d, to kill\n",
-			     p->comm, p->pid, oom_score_adj, tasksize);
+			      p->comm, p->pid, oom_score_adj, tasksize);
 	}
 	if (selected) {
 		int i, j;
@@ -621,7 +621,6 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		}
 
 		lowmem_deathpending_timeout = jiffies + HZ;
-
 		/* For easy parsing, show all zones info even its free & file
 		 * are zero. It will show as the following examples:
 		 *   0:0:756:1127 0:1:0:0 0:2:0:0
@@ -639,7 +638,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 				min_score_adj, sc->gfp_mask, zinfo);
 		set_tsk_thread_flag(selected, TIF_MEMDIE);
 		send_sig(SIGKILL, selected, 0);
-		rem -= selected_tasksize;
+		rem += selected_tasksize;
 		rcu_read_unlock();
 		/* give the system time to free up the memory */
 		msleep_interruptible(20);
@@ -650,14 +649,15 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		rcu_read_unlock();
 	}
 
-	lowmem_print(4, "lowmem_shrink %lu, %x, return %d\n",
-		     nr_to_scan, sc->gfp_mask, rem);
+	lowmem_print(4, "lowmem_scan %lu, %x, return %lu\n",
+		     sc->nr_to_scan, sc->gfp_mask, rem);
 	mutex_unlock(&scan_mutex);
 	return rem;
 }
 
 static struct shrinker lowmem_shrinker = {
-	.shrink = lowmem_shrink,
+	.scan_objects = lowmem_scan,
+	.count_objects = lowmem_count,
 	.seeks = DEFAULT_SEEKS * 16
 };
 
