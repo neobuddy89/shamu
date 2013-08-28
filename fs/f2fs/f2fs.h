@@ -2116,8 +2116,8 @@ int f2fs_inline_data_fiemap(struct inode *,
 /*
  * shrinker.c
  */
-int f2fs_shrink_count(struct shrinker *, struct shrink_control *);
-int f2fs_shrink_scan(struct shrinker *, struct shrink_control *);
+unsigned long f2fs_shrink_count(struct shrinker *, struct shrink_control *);
+unsigned long f2fs_shrink_scan(struct shrinker *, struct shrink_control *);
 void f2fs_join_shrinker(struct f2fs_sb_info *);
 void f2fs_leave_shrinker(struct f2fs_sb_info *);
 
