@@ -22,6 +22,7 @@ obj-y += sched/
 obj-y += locking/
 obj-y += power/
 obj-y += cpu/
+obj-y += irq/
 obj-y += rcu/
 
 obj-$(CONFIG_CHECKPOINT_RESTORE) += kcmp.o
@@ -66,7 +67,6 @@ obj-$(CONFIG_KGDB) += debug/
 obj-$(CONFIG_DETECT_HUNG_TASK) += hung_task.o
 obj-$(CONFIG_LOCKUP_DETECTOR) += watchdog.o
 obj-$(CONFIG_SOFTLOCKUP_WATCHDOG_TEST) += watchdogtest.o
-obj-$(CONFIG_GENERIC_HARDIRQS) += irq/
 obj-$(CONFIG_SECCOMP) += seccomp.o
 obj-$(CONFIG_RELAY) += relay.o
 obj-$(CONFIG_SYSCTL) += utsname_sysctl.o
