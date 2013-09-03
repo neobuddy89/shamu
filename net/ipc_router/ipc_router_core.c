@@ -3652,7 +3652,7 @@ static void *ipc_router_create_log_ctx(char *name)
 	if (!sub_log_ctx)
 		return NULL;
 	sub_log_ctx->log_ctx = ipc_log_context_create(
-				IPC_RTR_INFO_PAGES, name);
+				IPC_RTR_INFO_PAGES, name, 0);
 	if (!sub_log_ctx->log_ctx) {
 		IPC_RTR_ERR("%s: Unable to create IPC logging for [%s]",
 			__func__, name);
