@@ -133,7 +133,7 @@ static inline int avc_audit(u32 ssid, u32 tsid,
 			    u16 tclass, u32 requested,
 			    struct av_decision *avd,
 			    int result,
-			    struct common_audit_data *a, unsigned flags)
+			    struct common_audit_data *a)
 {
 	u32 audited, denied;
 	audited = avc_audit_required(requested, avd, result, 0, &denied);
@@ -141,7 +141,7 @@ static inline int avc_audit(u32 ssid, u32 tsid,
 		return 0;
 	return slow_avc_audit(ssid, tsid, tclass,
 			      requested, audited, denied, result,
-			      a, flags);
+			      a, 0);
 }
 
 #define AVC_STRICT 1 /* Ignore permissive mode. */
