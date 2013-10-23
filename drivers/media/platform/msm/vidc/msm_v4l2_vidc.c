@@ -35,7 +35,7 @@
 
 struct msm_vidc_drv *vidc_driver;
 
-uint32_t msm_vidc_pwr_collapse_delay = 2000;
+uint32_t msm_vidc_pwr_collapse_delay = 10000;
 
 uint32_t pm_qos_latency_us = 501;
 
