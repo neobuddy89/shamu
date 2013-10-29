@@ -85,11 +85,7 @@
 #include <linux/if_tunnel.h>
 #include <linux/rtnetlink.h>
 #include <linux/netconf.h>
-
-#ifdef CONFIG_IPV6_PRIVACY
 #include <linux/random.h>
-#endif
-
 #include <linux/uaccess.h>
 #include <asm/unaligned.h>
 
@@ -147,11 +143,9 @@ static inline void addrconf_sysctl_unregister(struct inet6_dev *idev)
 }
 #endif
 
-#ifdef CONFIG_IPV6_PRIVACY
 static void __ipv6_regen_rndid(struct inet6_dev *idev);
 static void __ipv6_try_regen_rndid(struct inet6_dev *idev, struct in6_addr *tmpaddr);
 static void ipv6_regen_rndid(unsigned long data);
-#endif
 
 static int ipv6_generate_eui64(u8 *eui, struct net_device *dev);
 static int ipv6_count_addresses(struct inet6_dev *idev);
@@ -207,13 +201,11 @@ static struct ipv6_devconf ipv6_devconf __read_mostly = {
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
 	.rtr_solicit_max_interval = RTR_SOLICITATION_MAX_INTERVAL,
 	.rtr_solicit_delay	= MAX_RTR_SOLICITATION_DELAY,
-#ifdef CONFIG_IPV6_PRIVACY
 	.use_tempaddr 		= 0,
 	.temp_valid_lft		= TEMP_VALID_LIFETIME,
 	.temp_prefered_lft	= TEMP_PREFERRED_LIFETIME,
 	.regen_max_retry	= REGEN_MAX_RETRY,
 	.max_desync_factor	= MAX_DESYNC_FACTOR,
-#endif
 	.max_addresses		= IPV6_MAX_ADDRESSES,
 	.accept_ra_defrtr	= 1,
 	.accept_ra_pinfo	= 1,
@@ -247,13 +239,11 @@ static struct ipv6_devconf ipv6_devconf_dflt __read_mostly = {
 	.rtr_solicit_interval	= RTR_SOLICITATION_INTERVAL,
 	.rtr_solicit_max_interval = RTR_SOLICITATION_MAX_INTERVAL,
 	.rtr_solicit_delay	= MAX_RTR_SOLICITATION_DELAY,
-#ifdef CONFIG_IPV6_PRIVACY
 	.use_tempaddr		= 0,
 	.temp_valid_lft		= TEMP_VALID_LIFETIME,
 	.temp_prefered_lft	= TEMP_PREFERRED_LIFETIME,
 	.regen_max_retry	= REGEN_MAX_RETRY,
 	.max_desync_factor	= MAX_DESYNC_FACTOR,
-#endif
 	.max_addresses		= IPV6_MAX_ADDRESSES,
 	.accept_ra_defrtr	= 1,
 	.accept_ra_pinfo	= 1,
@@ -440,7 +430,6 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 	}
 #endif
 
-#ifdef CONFIG_IPV6_PRIVACY
 	INIT_LIST_HEAD(&ndev->tempaddr_list);
 	setup_timer(&ndev->regen_timer, ipv6_regen_rndid, (unsigned long)ndev);
 	if ((dev->flags&IFF_LOOPBACK) ||
@@ -453,7 +442,7 @@ static struct inet6_dev *ipv6_add_dev(struct net_device *dev)
 		in6_dev_hold(ndev);
 		ipv6_regen_rndid((unsigned long) ndev);
 	}
-#endif
+
 	ndev->token = in6addr_any;
 
 	if (netif_running(dev) && addrconf_qdisc_ok(dev))
@@ -929,12 +918,10 @@ ipv6_add_addr(struct inet6_dev *idev, const struct in6_addr *addr, int pfxlen,
 	/* Add to inet6_dev unicast addr list. */
 	ipv6_link_dev_addr(idev, ifa);
 
-#ifdef CONFIG_IPV6_PRIVACY
 	if (ifa->flags&IFA_F_TEMPORARY) {
 		list_add(&ifa->tmp_list, &idev->tempaddr_list);
 		in6_ifa_hold(ifa);
 	}
-#endif
 
 	in6_ifa_hold(ifa);
 	write_unlock(&idev->lock);
@@ -979,7 +966,7 @@ static void ipv6_del_addr(struct inet6_ifaddr *ifp)
 	spin_unlock_bh(&addrconf_hash_lock);
 
 	write_lock_bh(&idev->lock);
-#ifdef CONFIG_IPV6_PRIVACY
+
 	if (ifp->flags&IFA_F_TEMPORARY) {
 		list_del(&ifp->tmp_list);
 		if (ifp->ifpub) {
@@ -988,7 +975,6 @@ static void ipv6_del_addr(struct inet6_ifaddr *ifp)
 		}
 		__in6_ifa_put(ifp);
 	}
-#endif
 
 	list_for_each_entry_safe(ifa, ifn, &idev->addr_list, if_list) {
 		if (ifa == ifp) {
@@ -1079,7 +1065,6 @@ out:
 	in6_ifa_put(ifp);
 }
 
-#ifdef CONFIG_IPV6_PRIVACY
 static int ipv6_create_tempaddr(struct inet6_ifaddr *ifp, struct inet6_ifaddr *ift)
 {
 	struct inet6_dev *idev = ifp->idev;
@@ -1189,7 +1174,6 @@ retry:
 out:
 	return ret;
 }
-#endif
 
 /*
  *	Choose an appropriate source address (RFC3484)
@@ -1204,9 +1188,7 @@ enum {
 #endif
 	IPV6_SADDR_RULE_OIF,
 	IPV6_SADDR_RULE_LABEL,
-#ifdef CONFIG_IPV6_PRIVACY
 	IPV6_SADDR_RULE_PRIVACY,
-#endif
 	IPV6_SADDR_RULE_ORCHID,
 	IPV6_SADDR_RULE_PREFIX,
 #ifdef CONFIG_IPV6_OPTIMISTIC_DAD
@@ -1338,7 +1320,6 @@ static int ipv6_get_saddr_eval(struct net *net,
 				      &score->ifa->addr, score->addr_type,
 				      score->ifa->idev->dev->ifindex) == dst->label;
 		break;
-#ifdef CONFIG_IPV6_PRIVACY
 	case IPV6_SADDR_RULE_PRIVACY:
 	    {
 		/* Rule 7: Prefer public address
@@ -1350,7 +1331,6 @@ static int ipv6_get_saddr_eval(struct net *net,
 		ret = (!(score->ifa->flags & IFA_F_TEMPORARY)) ^ preftmp;
 		break;
 	    }
-#endif
 	case IPV6_SADDR_RULE_ORCHID:
 		/* Rule 8-: Prefer ORCHID vs ORCHID or
 		 *	    non-ORCHID vs non-ORCHID
@@ -1696,7 +1676,6 @@ static void addrconf_dad_stop(struct inet6_ifaddr *ifp, int dad_failed)
 		if (dad_failed)
 			ipv6_ifa_notify(0, ifp);
 		in6_ifa_put(ifp);
-#ifdef CONFIG_IPV6_PRIVACY
 	} else if (ifp->flags&IFA_F_TEMPORARY) {
 		struct inet6_ifaddr *ifpub;
 		spin_lock_bh(&ifp->lock);
@@ -1710,7 +1689,6 @@ static void addrconf_dad_stop(struct inet6_ifaddr *ifp, int dad_failed)
 			spin_unlock_bh(&ifp->lock);
 		}
 		ipv6_del_addr(ifp);
-#endif
 	} else {
 		ipv6_del_addr(ifp);
 	}
@@ -1969,7 +1947,6 @@ static int ipv6_inherit_eui64(u8 *eui, struct inet6_dev *idev)
 	return err;
 }
 
-#ifdef CONFIG_IPV6_PRIVACY
 /* (re)generation of randomized interface identifier (RFC 3041 3.2, 3.5) */
 static void __ipv6_regen_rndid(struct inet6_dev *idev)
 {
@@ -2037,7 +2014,6 @@ static void  __ipv6_try_regen_rndid(struct inet6_dev *idev, struct in6_addr *tmp
 	if (tmpaddr && memcmp(idev->rndid, &tmpaddr->s6_addr[8], 8) == 0)
 		__ipv6_regen_rndid(idev);
 }
-#endif
 
 u32 addrconf_rt_table(const struct net_device *dev, u32 default_table) {
 	/* Determines into what table to put autoconf PIO/RIO/default routes
@@ -2350,9 +2326,7 @@ ok:
 		if (ifp) {
 			int flags;
 			unsigned long now;
-#ifdef CONFIG_IPV6_PRIVACY
 			struct inet6_ifaddr *ift;
-#endif
 			u32 stored_lft;
 
 			/* update lifetime (RFC2462 5.5.3 e) */
@@ -2415,7 +2389,6 @@ ok:
 			} else
 				spin_unlock(&ifp->lock);
 
-#ifdef CONFIG_IPV6_PRIVACY
 			read_lock_bh(&in6_dev->lock);
 			/* update all temporary addresses in the list */
 			list_for_each_entry(ift, &in6_dev->tempaddr_list,
@@ -2480,7 +2453,7 @@ ok:
 			} else {
 				read_unlock_bh(&in6_dev->lock);
 			}
-#endif
+
 			in6_ifa_put(ifp);
 			addrconf_verify();
 		}
@@ -3224,7 +3197,6 @@ static int addrconf_ifdown(struct net_device *dev, int how)
 	if (!how)
 		idev->if_flags &= ~(IF_RS_SENT|IF_RA_RCVD|IF_READY);
 
-#ifdef CONFIG_IPV6_PRIVACY
 	if (how && del_timer(&idev->regen_timer))
 		in6_dev_put(idev);
 
@@ -3244,7 +3216,6 @@ static int addrconf_ifdown(struct net_device *dev, int how)
 		in6_ifa_put(ifa);
 		write_lock_bh(&idev->lock);
 	}
-#endif
 
 	while (!list_empty(&idev->addr_list)) {
 		ifa = list_first_entry(&idev->addr_list,
@@ -3798,7 +3769,6 @@ restart:
 					in6_ifa_put(ifp);
 					goto restart;
 				}
-#ifdef CONFIG_IPV6_PRIVACY
 			} else if ((ifp->flags&IFA_F_TEMPORARY) &&
 				   !(ifp->flags&IFA_F_TENTATIVE)) {
 				unsigned long regen_advance = ifp->idev->cnf.regen_max_retry *
@@ -3826,7 +3796,6 @@ restart:
 				} else if (time_before(ifp->tstamp + ifp->prefered_lft * HZ - regen_advance * HZ, next))
 					next = ifp->tstamp + ifp->prefered_lft * HZ - regen_advance * HZ;
 				spin_unlock(&ifp->lock);
-#endif
 			} else {
 				/* ifp->prefered_lft <= ifp->valid_lft */
 				if (time_before(ifp->tstamp + ifp->prefered_lft * HZ, next))
@@ -4395,13 +4364,11 @@ static inline void ipv6_store_devconf(struct ipv6_devconf *cnf,
 	array[DEVCONF_RTR_SOLICIT_DELAY] =
 		jiffies_to_msecs(cnf->rtr_solicit_delay);
 	array[DEVCONF_FORCE_MLD_VERSION] = cnf->force_mld_version;
-#ifdef CONFIG_IPV6_PRIVACY
 	array[DEVCONF_USE_TEMPADDR] = cnf->use_tempaddr;
 	array[DEVCONF_TEMP_VALID_LFT] = cnf->temp_valid_lft;
 	array[DEVCONF_TEMP_PREFERED_LFT] = cnf->temp_prefered_lft;
 	array[DEVCONF_REGEN_MAX_RETRY] = cnf->regen_max_retry;
 	array[DEVCONF_MAX_DESYNC_FACTOR] = cnf->max_desync_factor;
-#endif
 	array[DEVCONF_MAX_ADDRESSES] = cnf->max_addresses;
 	array[DEVCONF_ACCEPT_RA_DEFRTR] = cnf->accept_ra_defrtr;
 	array[DEVCONF_ACCEPT_RA_PINFO] = cnf->accept_ra_pinfo;
@@ -5069,7 +5036,6 @@ static struct addrconf_sysctl_table
 			.mode		= 0644,
 			.proc_handler	= proc_dointvec,
 		},
-#ifdef CONFIG_IPV6_PRIVACY
 		{
 			.procname	= "use_tempaddr",
 			.data		= &ipv6_devconf.use_tempaddr,
@@ -5105,7 +5071,6 @@ static struct addrconf_sysctl_table
 			.mode		= 0644,
 			.proc_handler	= proc_dointvec,
 		},
-#endif
 		{
 			.procname	= "max_addresses",
 			.data		= &ipv6_devconf.max_addresses,
