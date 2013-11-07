@@ -46,6 +46,8 @@
 #define V4L2_EVENT_RELEASE_BUFFER_REFERENCE \
 		V4L2_EVENT_MSM_VIDC_RELEASE_BUFFER_REFERENCE
 
+#define IS_CMD_VALID(cmd) ((cmd - SESSION_MSG_START) <= SESSION_MSG_END)
+
 struct getprop_buf {
 	struct list_head list;
 	void *data;
@@ -367,7 +369,9 @@ struct msm_vidc_core *get_vidc_core(int core_id)
 	}
 	mutex_lock(&vidc_driver->lock);
 	list_for_each_entry(core, &vidc_driver->cores, list) {
-		if (core && core->id == core_id) {
+		if (!core)
+			return NULL;
+		if (core->id == core_id) {
 			found = 1;
 			break;
 		}
@@ -500,8 +504,13 @@ static void handle_session_release_buf_done(enum command_response cmd,
 	}
 
 	if (!buf_found)
-		dprintk(VIDC_ERR, "invalid buffer received from firmware\n");
-	complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
+		dprintk(VIDC_ERR, "invalid buffer received from firmware");
+	if (IS_CMD_VALID(cmd)) {
+		complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
+	} else {
+		dprintk(VIDC_ERR, "Invalid inst cmd response: %d\n", cmd);
+		return;
+	}
 }
 
 static void handle_sys_release_res_done(
@@ -519,7 +528,12 @@ static void handle_sys_release_res_done(
 		dprintk(VIDC_ERR, "Wrong device_id received\n");
 		return;
 	}
-	complete(&core->completions[SYS_MSG_INDEX(cmd)]);
+	if (IS_CMD_VALID(cmd)) {
+		complete(&core->completions[SYS_MSG_INDEX(cmd)]);
+	} else {
+		dprintk(VIDC_ERR, "Invalid core cmd response: %d\n", cmd);
+		return;
+	}
 }
 
 static void change_inst_state(struct msm_vidc_inst *inst,
@@ -550,7 +564,12 @@ static int signal_session_msg_receipt(enum command_response cmd,
 		dprintk(VIDC_ERR, "Invalid(%p) instance id\n", inst);
 		return -EINVAL;
 	}
-	complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
+	if (IS_CMD_VALID(cmd)) {
+		complete(&inst->completions[SESSION_MSG_INDEX(cmd)]);
+	} else {
+		dprintk(VIDC_ERR, "Invalid inst cmd response: %d\n", cmd);
+		return -EINVAL;
+	}
 	return 0;
 }
 
@@ -558,13 +577,16 @@ static int wait_for_sess_signal_receipt(struct msm_vidc_inst *inst,
 	enum command_response cmd)
 {
 	int rc = 0;
+
+	if (!IS_CMD_VALID(cmd)) {
+		dprintk(VIDC_ERR, "Invalid inst cmd response: %d\n", cmd);
+		return -EINVAL;
+	}
 	rc = wait_for_completion_timeout(
 		&inst->completions[SESSION_MSG_INDEX(cmd)],
 		msecs_to_jiffies(msm_vidc_hw_rsp_timeout));
 	if (!rc) {
-		dprintk(VIDC_ERR,
-			"%s: Wait interrupted or timeout[%p]: %d\n",
-			__func__, inst->session, SESSION_MSG_INDEX(cmd));
+		dprintk(VIDC_ERR, "Wait interrupted or timedout: %d\n", rc);
 		msm_comm_kill_session(inst);
 		rc = -EIO;
 	} else {
@@ -841,8 +863,7 @@ static void handle_load_resource_done(enum command_response cmd, void *data)
 				response->status);
 			msm_comm_generate_session_error(inst);
 		}
-	}
-	else
+	} else
 		dprintk(VIDC_ERR,
 			"Failed to get valid response for load resource\n");
 }
@@ -2873,12 +2894,20 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 	struct hfi_device *hdev;
 	int extra_idx = 0;
 
-	q = vb->vb2_queue;
-	inst = q->drv_priv;
-	if (!inst || !vb) {
-		dprintk(VIDC_ERR, "Invalid input: %p, %p\n", inst, vb);
+	if (!vb || !vb->vb2_queue)  {
+		dprintk(VIDC_ERR, "%s: Invalid input: %p\n",
+			__func__, vb);
 		return -EINVAL;
 	}
+
+	q = vb->vb2_queue;
+	inst = q->drv_priv;
+	if (!inst) {
+		dprintk(VIDC_ERR, "%s: Invalid input: %p\n",
+			__func__, vb);
+		return -EINVAL;
+	}
+
 	core = inst->core;
 	if (!core) {
 		dprintk(VIDC_ERR,
@@ -2887,7 +2916,8 @@ int msm_comm_qbuf(struct vb2_buffer *vb)
 	}
 	hdev = core->device;
 	if (!hdev) {
-		dprintk(VIDC_ERR, "Invalid input: %p\n", hdev);
+		dprintk(VIDC_ERR, "%s: Invalid input: %p\n",
+			__func__, hdev);
 		return -EINVAL;
 	}
 
