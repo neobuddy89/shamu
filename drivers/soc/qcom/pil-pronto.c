@@ -29,7 +29,7 @@
 #include <soc/qcom/subsystem_restart.h>
 #include <soc/qcom/ramdump.h>
 
-#include <mach/msm_smsm.h>
+#include <soc/qcom/smsm.h>
 #include <mach/msm_bus_board.h>
 
 #include <soc/qcom/smem.h>

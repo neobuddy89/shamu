@@ -30,7 +30,7 @@
 #ifdef CONFIG_DIAG_OVER_TTY
 #include <mach/tty_diag.h>
 #endif
-#include <mach/msm_smd.h>
+#include <soc/qcom/smd.h>
 #include <soc/qcom/socinfo.h>
 #include <mach/restart.h>
 #include "diagmem.h"

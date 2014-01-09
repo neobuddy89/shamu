@@ -19,7 +19,7 @@
 #include <asm/system_info.h>
 #include <asm/bootinfo.h>
 
-#include <mach/msm_smsm.h>
+#include <soc/qcom/smsm.h>
 #include "mmi-unit-info.h"
 
 #include <linux/of.h>

@@ -26,7 +26,7 @@
 #include <linux/string.h>
 #include <linux/skbuff.h>
 #include <linux/workqueue.h>
-#include <mach/msm_smd.h>
+#include <soc/qcom/smd.h>
 #include <media/radio-iris.h>
 
 struct radio_data {
