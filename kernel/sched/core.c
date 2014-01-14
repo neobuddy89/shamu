@@ -348,15 +348,6 @@ __read_mostly int scheduler_running;
 int sysctl_sched_rt_runtime = 950000;
 
 /*
- * Maximum bandwidth available for all -deadline tasks and groups
- * (if group scheduling is configured) on each CPU.
- *
- * default: 5%
- */
-unsigned int sysctl_sched_dl_period = 1000000;
-int sysctl_sched_dl_runtime = 50000;
-
-/*
  * Number of sched_yield calls that result in a thread yielding
  * to itself before a sleep is injected in its next sched_yield call
  * Setting this to -1 will disable adding sleep in sched_yield
