@@ -3,7 +3,6 @@ ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
 endif
 obj-$(CONFIG_USE_OF) += board-dt.o
-obj-$(CONFIG_DEBUG_FS) += nohlt.o
 
 obj-y += acpuclock.o
 obj-$(CONFIG_HW_PERF_EVENTS) += perf_trace_counters.o perf_trace_user.o
