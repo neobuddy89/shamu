@@ -848,10 +848,6 @@ config IOMMU_API
 config MSM_GPIOMUX
 	bool
 
-config MSM_PM
-	depends on PM
-	bool
-
 config MSM_EVENT_TIMER
 	bool "Event timer"
 	help
