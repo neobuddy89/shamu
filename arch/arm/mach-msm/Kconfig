@@ -816,14 +816,6 @@ config IOMMU_API
 config MSM_GPIOMUX
 	bool
 
-config MSM_EVENT_TIMER
-	bool "Event timer"
-	help
-		This option enables a modules that manages a list of event timers that
-		need to be monitored by the PM. The enables the PM code to monitor
-		events that require the core to be awake and ready to handle the
-		event.
-
 config MSM_BUS_RPM_MULTI_TIER_ENABLED
 	bool "RPM Multi-tiering Configuration"
 	depends on MSM_BUS_SCALING
