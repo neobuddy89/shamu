@@ -65,7 +65,6 @@ obj-$(CONFIG_MSM_PM) += msm-pm.o pm-data.o lpm_levels.o
 CFLAGS_msm_vibrator.o += -Idrivers/staging/android
 
 obj-$(CONFIG_MSM_LPM_TEST) += test-lpm.o
-obj-$(CONFIG_MSM_MPM_OF) += mpm-of.o
 obj-$(CONFIG_MSM_TZ_LOG) += tz_log.o
 
 obj-$(CONFIG_MSM_EVENT_TIMER)		+= event_timer.o
