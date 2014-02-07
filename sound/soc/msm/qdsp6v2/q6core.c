@@ -21,7 +21,7 @@
 #include <soc/qcom/smd.h>
 #include <linux/qdsp6v2/apr.h>
 #include <sound/q6core.h>
-#include <mach/ocmem.h>
+#include <soc/qcom/ocmem.h>
 
 #define TIMEOUT_MS 1000
 

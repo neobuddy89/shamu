@@ -72,9 +72,6 @@ obj-$(CONFIG_MSM_BUSPM_DEV) += msm-buspm-dev.o
 
 obj-$(CONFIG_MSM_EVENT_TIMER)		+= event_timer.o
 
-obj-$(CONFIG_MSM_OCMEM) += ocmem.o ocmem_allocator.o ocmem_notifier.o
-obj-$(CONFIG_MSM_OCMEM) += ocmem_sched.o ocmem_api.o ocmem_rdm.o ocmem_core.o
-
 obj-$(CONFIG_ARCH_MSM8974) += gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MDM9630) += gpiomux-v2.o gpiomux.o
 obj-$(CONFIG_ARCH_MSMSAMARIUM) += gpiomux-v2.o gpiomux.o

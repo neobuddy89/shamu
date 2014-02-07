@@ -18,7 +18,7 @@
 #include "adreno_ringbuffer.h"
 #include "adreno_profile.h"
 #include "kgsl_iommu.h"
-#include <mach/ocmem.h>
+#include <soc/qcom/ocmem.h>
 
 #include "a3xx_reg.h"
 #include "a4xx_reg.h"

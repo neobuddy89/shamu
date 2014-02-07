@@ -22,7 +22,7 @@
 #include <soc/qcom/scm.h>
 #include <mach/iommu.h>
 #include <linux/msm_iommu_domains.h>
-#include <mach/ocmem.h>
+#include <soc/qcom/ocmem.h>
 #include <soc/qcom/smem.h>
 #include <asm/memory.h>
 #include <linux/iopoll.h>
