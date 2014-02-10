@@ -13,7 +13,7 @@
 #ifndef __KGSL_IOMMU_H
 #define __KGSL_IOMMU_H
 
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
 
 #define KGSL_IOMMU_CTX_OFFSET_V0	0
 #define KGSL_IOMMU_CTX_OFFSET_V1	0x8000

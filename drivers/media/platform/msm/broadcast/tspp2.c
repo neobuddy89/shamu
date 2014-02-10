@@ -27,7 +27,7 @@
 #include <linux/mutex.h>
 #include <linux/workqueue.h>
 #include <linux/iommu.h>
-#include <mach/iommu.h>
+#include <linux/qcom_iommu.h>
 #include <linux/msm_iommu_domains.h>
 #include <linux/msm-bus.h>
 #include <mach/msm_tspp2.h>
