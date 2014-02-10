@@ -280,14 +280,22 @@ static ssize_t client_data_read(struct file *file, char __user *buf,
 {
 	ssize_t ret;
 	int bsize = 0;
-	uint32_t cl = (uint32_t)file->private_data;
+	uint32_t cl = (uint32_t)(uintptr_t)file->private_data;
 	struct msm_bus_cldata *cldata = NULL;
+	int found = 0;
 
 	mutex_lock(&cl_list_lock);
 	list_for_each_entry(cldata, &cl_list, list) {
-		if (cldata->clid == cl)
+		if (cldata->clid == cl) {
+			found = 1;
 			break;
+		}
 	}
+	if (!found) {
+		mutex_unlock(&cl_list_lock);
+		return 0;
+	}
+
 	bsize = cldata->size;
 	ret = simple_read_from_buffer(buf, count, ppos,
 		cldata->buffer, bsize);
@@ -313,7 +321,7 @@ struct dentry *msm_bus_dbg_create(const char *name, mode_t mode,
 		MSM_BUS_DBG("debugfs not ready yet\n");
 		return NULL;
 	}
-	return debugfs_create_file(name, mode, dent, (void *)clid,
+	return debugfs_create_file(name, mode, dent, (void *)(uintptr_t)clid,
 		&client_data_fops);
 }
 
@@ -362,12 +370,21 @@ static int msm_bus_dbg_fill_cl_buffer(const struct msm_bus_scale_pdata *pdata,
 	char *buf = NULL;
 	struct msm_bus_cldata *cldata = NULL;
 	struct timespec ts;
+	int found = 0;
 
 	mutex_lock(&cl_list_lock);
 	list_for_each_entry(cldata, &cl_list, list) {
-		if (cldata->clid == clid)
+		if (cldata->clid == clid) {
+			found = 1;
 			break;
+		}
 	}
+
+	if (!found) {
+		mutex_unlock(&cl_list_lock);
+		return -ENOENT;
+	}
+
 	if (cldata->file == NULL) {
 		if (pdata->name == NULL) {
 			MSM_BUS_DBG("Client doesn't have a name\n");
@@ -441,6 +458,7 @@ static ssize_t  msm_bus_dbg_update_request_write(struct file *file,
 	int ret = 0;
 	char *chid;
 	char *buf = kmalloc((sizeof(char) * (cnt + 1)), GFP_KERNEL);
+	int found = 0;
 
 	if (!buf || IS_ERR(buf)) {
 		MSM_BUS_ERR("Memory allocation for buffer failed\n");
@@ -452,11 +470,12 @@ static ssize_t  msm_bus_dbg_update_request_write(struct file *file,
 		return -EFAULT;
 	buf[cnt] = '\0';
 	chid = buf;
-	MSM_BUS_DBG("buffer: %s\n size: %d\n", buf, sizeof(ubuf));
+	MSM_BUS_DBG("buffer: %s\n size: %zu\n", buf, sizeof(ubuf));
 
 	mutex_lock(&cl_list_lock);
 	list_for_each_entry(cldata, &cl_list, list) {
 		if (strnstr(chid, cldata->pdata->name, cnt)) {
+			found = 1;
 			cldata = cldata;
 			strsep(&chid, " ");
 			if (chid) {
@@ -467,14 +486,17 @@ static ssize_t  msm_bus_dbg_update_request_write(struct file *file,
 					mutex_unlock(&cl_list_lock);
 					return -EFAULT;
 				}
-			} else
+			} else {
 				MSM_BUS_DBG("Error parsing input. Index not"
 					" found\n");
+				found = 0;
+			}
 			break;
 		}
 	}
 
-	msm_bus_dbg_update_request(cldata, index);
+	if (found)
+		msm_bus_dbg_update_request(cldata, index);
 	mutex_unlock(&cl_list_lock);
 	kfree(buf);
 	return cnt;
@@ -491,11 +513,18 @@ static ssize_t fabric_data_read(struct file *file, char __user *buf,
 	int bsize = 0;
 	ssize_t ret;
 	const char *name = file->private_data;
+	int found = 0;
 
 	mutex_lock(&msm_bus_dbg_fablist_lock);
 	list_for_each_entry(fablist, &fabdata_list, list) {
-		if (strcmp(fablist->name, name) == 0)
+		if (strcmp(fablist->name, name) == 0) {
+			found = 1;
 			break;
+		}
+	}
+	if (!found) {
+		mutex_unlock(&msm_bus_dbg_fablist_lock);
+		return -ENOENT;
 	}
 	bsize = fablist->size;
 	ret = simple_read_from_buffer(buf, count, ppos,
@@ -554,12 +583,20 @@ static int msm_bus_dbg_fill_fab_buffer(const char *fabname,
 	char *buf = NULL;
 	struct msm_bus_fab_list *fablist = NULL;
 	struct timespec ts;
+	int found = 0;
 
 	mutex_lock(&msm_bus_dbg_fablist_lock);
 	list_for_each_entry(fablist, &fabdata_list, list) {
-		if (strcmp(fablist->name, fabname) == 0)
+		if (strcmp(fablist->name, fabname) == 0) {
+			found = 1;
 			break;
+		}
 	}
+	if (!found) {
+		mutex_unlock(&msm_bus_dbg_fablist_lock);
+		return -ENOENT;
+	}
+
 	if (fablist->file == NULL) {
 		MSM_BUS_DBG("Fabric dbg entry does not exist\n");
 		mutex_unlock(&msm_bus_dbg_fablist_lock);
