@@ -22,8 +22,8 @@
 #include <linux/string.h>
 #include <linux/uaccess.h>
 #include <linux/hrtimer.h>
-#include <mach/msm_bus_board.h>
-#include <mach/msm_bus.h>
+#include <linux/msm-bus-board.h>
+#include <linux/msm-bus.h>
 #include "msm_bus_core.h"
 
 #define CREATE_TRACE_POINTS
@@ -456,7 +456,7 @@ static ssize_t  msm_bus_dbg_update_request_write(struct file *file,
 
 	mutex_lock(&cl_list_lock);
 	list_for_each_entry(cldata, &cl_list, list) {
-		if (strstr(chid, cldata->pdata->name)) {
+		if (strnstr(chid, cldata->pdata->name, cnt)) {
 			cldata = cldata;
 			strsep(&chid, " ");
 			if (chid) {

@@ -30,7 +30,7 @@
 #include <soc/qcom/ramdump.h>
 
 #include <soc/qcom/smsm.h>
-#include <mach/msm_bus_board.h>
+#include <linux/msm-bus-board.h>
 
 #include <soc/qcom/smem.h>
 

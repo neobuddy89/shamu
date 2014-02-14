@@ -34,7 +34,7 @@
 #include <mach/iommu.h>
 #include <mach/msm_iommu_priv.h>
 #include <mach/iommu_perfmon.h>
-#include <mach/msm_bus.h>
+#include <linux/msm-bus.h>
 #include "msm_iommu_pagetable.h"
 
 #ifdef CONFIG_IOMMU_LPAE

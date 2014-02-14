@@ -19,7 +19,7 @@
 #include <linux/mutex.h>
 #include <linux/radix-tree.h>
 #include <linux/clk.h>
-#include <mach/msm_bus.h>
+#include <linux/msm-bus.h>
 #include "msm_bus_core.h"
 #include <mach/trace_msm_bus.h>
 

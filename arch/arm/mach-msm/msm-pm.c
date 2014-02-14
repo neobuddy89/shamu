@@ -38,7 +38,7 @@
 #ifdef CONFIG_VFP
 #include <asm/vfp.h>
 #endif
-#include <mach/msm_bus.h>
+#include <linux/msm-bus.h>
 #include <soc/qcom/jtag.h>
 #include "idle.h"
 #include "clock.h"

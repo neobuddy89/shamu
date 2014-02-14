@@ -30,7 +30,7 @@
 #include <linux/crypto.h>
 #include <crypto/hash.h>
 #include <linux/platform_data/qcom_crypto_device.h>
-#include <mach/msm_bus.h>
+#include <linux/msm-bus.h>
 #include <linux/qcedev.h>
 #include "qcedevi.h"
 #include "qce.h"
