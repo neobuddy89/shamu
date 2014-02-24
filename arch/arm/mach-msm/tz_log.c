@@ -787,7 +787,7 @@ static void tzlog_bck_check(struct platform_device *pdev)
 	dump_entry.id = MSM_TZ_LOG;
 	dump_entry.start_addr = offsets[0];
 	dump_entry.end_addr = offsets[0] + DEBUG_MAX_RW_BUF;
-	ret = msm_dump_table_register(&dump_entry);
+	ret = msm_dump_tbl_register(&dump_entry);
 	if (ret) {
 		MSMWDTD("tzlog: cannot register buffer: %x\n", offsets[0]);
 		dev_err(&pdev->dev, "cannot register buffer: %x\n", offsets[0]);
