@@ -639,7 +639,6 @@ static int f2fs_show_options(struct seq_file *seq, struct dentry *root)
 		seq_puts(seq, ",fastboot");
 	if (test_opt(sbi, EXTENT_CACHE))
 		seq_puts(seq, ",extent_cache");
-	seq_printf(seq, ",active_logs=%u", sbi->active_logs);
 
 	return 0;
 }
