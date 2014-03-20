@@ -194,6 +194,7 @@ struct kgsl_event {
  * @events: List of active GPU events
  * @group: Node for the master group list
  * @processed: Last processed timestamp
+ * @name: String name for the group (for the debugfs file)
  */
 struct kgsl_event_group {
 	struct kgsl_context *context;
@@ -201,6 +202,7 @@ struct kgsl_event_group {
 	struct list_head events;
 	struct list_head group;
 	unsigned int processed;
+	char name[64];
 };
 
 /**
@@ -578,7 +580,7 @@ void kgsl_events_exit(void);
 
 void kgsl_del_event_group(struct kgsl_event_group *group);
 void kgsl_add_event_group(struct kgsl_event_group *group,
-		struct kgsl_context *context);
+		struct kgsl_context *context, const char *name);
 
 void kgsl_cancel_events_timestamp(struct kgsl_device *device,
 		struct kgsl_event_group *group, unsigned int timestamp);
