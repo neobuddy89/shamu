@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,7 +31,7 @@
 #include <soc/qcom/memory_dump.h>
 #endif /* CONFIG_MSM_TZ_LOG_WDOG_DUMP */
 #include <soc/qcom/scm.h>
-#include <mach/qseecomi.h>
+#include <soc/qcom/qseecomi.h>
 
 #define DEBUG_MAX_RW_BUF 4096
 
