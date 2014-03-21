@@ -112,7 +112,8 @@ int wcd9xxx_disconnect_port(struct wcd9xxx *wcd9xxx,
 int wcd9xxx_rx_vport_validation(u32 port_id,
 				struct list_head *codec_dai_list);
 int wcd9xxx_tx_vport_validation(u32 vtable, u32 port_id,
-				struct wcd9xxx_codec_dai_data *codec_dai);
+				struct wcd9xxx_codec_dai_data *codec_dai,
+				u32 num_codec_dais);
 int wcd9xxx_slim_ch_master_open(struct wcd9xxx *wcd9xxx,
 		u16 rate, u16 bit_sz, void **handle, u16 slim_channel);
 int wcd9xxx_slim_ch_master_close(struct wcd9xxx *wcd9xxx, void **handle);
