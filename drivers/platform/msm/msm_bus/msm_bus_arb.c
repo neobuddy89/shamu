@@ -21,7 +21,7 @@
 #include <linux/clk.h>
 #include <linux/msm-bus.h>
 #include "msm_bus_core.h"
-#include <mach/trace_msm_bus.h>
+#include <trace/events/trace_msm_bus.h>
 
 #define INDEX_MASK 0x0000FFFF
 #define PNODE_MASK 0xFFFF0000

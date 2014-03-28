@@ -18,7 +18,7 @@
 #include "msm_bus_core.h"
 #include "msm_bus_bimc.h"
 #include "msm_bus_adhoc.h"
-#include <mach/trace_msm_bus.h>
+#include <trace/events/trace_msm_bus.h>
 
 enum msm_bus_bimc_slave_block {
 	SLAVE_BLOCK_RESERVED = 0,

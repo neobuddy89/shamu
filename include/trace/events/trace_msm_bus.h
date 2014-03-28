@@ -129,7 +129,5 @@ TRACE_EVENT(bus_bke_params,
 );
 
 #endif
-#undef TRACE_INCLUDE_PATH
-#define TRACE_INCLUDE_PATH mach
 #define TRACE_INCLUDE_FILE trace_msm_bus
 #include <trace/define_trace.h>
