@@ -515,6 +515,12 @@ static int ion_secure_cma_allocate(struct ion_heap *heap,
 		return -ENOMEM;
 	}
 
+	if (!IS_ALIGNED(len, SZ_1M)) {
+		pr_err("%s: length of allocation from %s must be a multiple of 1MB\n",
+			__func__, heap->name);
+		return -ENOMEM;
+	}
+
 	trace_ion_secure_cma_allocate_start(heap->name, len, align, flags);
 	buf = __ion_secure_cma_allocate(heap, buffer, len, align, flags);
 	trace_ion_secure_cma_allocate_end(heap->name, len, align, flags);
