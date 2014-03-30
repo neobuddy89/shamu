@@ -1906,6 +1906,8 @@ extern void do_set_cpus_allowed(struct task_struct *p,
 
 extern int set_cpus_allowed_ptr(struct task_struct *p,
 				const struct cpumask *new_mask);
+extern void sched_set_cpu_cstate(int cpu, int cstate,
+			 int wakeup_energy, int wakeup_latency);
 #else
 static inline void do_set_cpus_allowed(struct task_struct *p,
 				      const struct cpumask *new_mask)
@@ -1917,6 +1919,10 @@ static inline int set_cpus_allowed_ptr(struct task_struct *p,
 	if (!cpumask_test_cpu(0, new_mask))
 		return -EINVAL;
 	return 0;
+}
+static inline void
+sched_set_cpu_cstate(int cpu, int cstate, int wakeup_energy, int wakeup_latency)
+{
 }
 #endif
 
