@@ -1000,7 +1000,7 @@ static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
 		trace_cpufreq_interactive_boost("on");
 		cpufreq_interactive_boost();
 	} else {
-		boostpulse_endtime = ktime_to_us(ktime_get());
+		tunables->boostpulse_endtime = ktime_to_us(ktime_get());
 		trace_cpufreq_interactive_unboost("off");
 	}
 
@@ -1405,7 +1405,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 				 * calculations do not get reset.
 				 */
 				add_timer_on(&pcpu->cpu_timer, j);
-				if (timer_slack_val >= 0 && pcpu->target_freq >
+				if (tunables->timer_slack_val >= 0 && pcpu->target_freq >
 							pcpu->policy->min)
 					add_timer_on(&pcpu->cpu_slack_timer, j);
 			} else if (policy->min >= pcpu->target_freq) {
