@@ -1275,7 +1275,7 @@ adreno_identify_gpu(struct adreno_device *adreno_dev)
 {
 	const struct adreno_reg_offsets *reg_offsets;
 	struct kgsl_device_platform_data *pdata =
-		kgsl_device_get_drvdata(&adreno_dev->dev);
+		dev_get_platdata(&(adreno_dev->dev.pdev->dev));
 	struct adreno_gpudev *gpudev;
 	int i;
 
@@ -1640,7 +1640,7 @@ adreno_probe(struct platform_device *pdev)
 
 	device = (struct kgsl_device *)pdev->id_entry->driver_data;
 	adreno_dev = ADRENO_DEVICE(device);
-	device->parentdev = &pdev->dev;
+	device->pdev = pdev;
 
 	status = kgsl_device_platform_probe(device);
 	if (status)
@@ -1678,7 +1678,7 @@ error_close_rb:
 error_close_device:
 	kgsl_device_platform_remove(device);
 error:
-	device->parentdev = NULL;
+	device->pdev = NULL;
 error_return:
 	return status;
 }
