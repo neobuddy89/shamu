@@ -386,6 +386,7 @@ extern int spmi_ext_register_writel(struct spmi_controller *ctrl,
  * -EPERM if the SPMI transaction is denied due to permission issues.
  * -EIO if the SPMI transaction fails (parity errors, etc).
  * -ETIMEDOUT if the SPMI transaction times out.
+ * -EAGAIN if the SPMI transaction is temporarily unavailable
  */
 extern int spmi_command_reset(struct spmi_controller *ctrl, u8 sid);
 
@@ -401,6 +402,7 @@ extern int spmi_command_reset(struct spmi_controller *ctrl, u8 sid);
  * -EPERM if the SPMI transaction is denied due to permission issues.
  * -EIO if the SPMI transaction fails (parity errors, etc).
  * -ETIMEDOUT if the SPMI transaction times out.
+ * -EAGAIN if the SPMI transaction is temporarily unavailable
  */
 extern int spmi_command_sleep(struct spmi_controller *ctrl, u8 sid);
 
@@ -417,6 +419,7 @@ extern int spmi_command_sleep(struct spmi_controller *ctrl, u8 sid);
  * -EPERM if the SPMI transaction is denied due to permission issues.
  * -EIO if the SPMI transaction fails (parity errors, etc).
  * -ETIMEDOUT if the SPMI transaction times out.
+ * -EAGAIN if the SPMI transaction is temporarily unavailable
  */
 extern int spmi_command_wakeup(struct spmi_controller *ctrl, u8 sid);
 
@@ -432,6 +435,7 @@ extern int spmi_command_wakeup(struct spmi_controller *ctrl, u8 sid);
  * -EPERM if the SPMI transaction is denied due to permission issues.
  * -EIO if the SPMI transaction fails (parity errors, etc).
  * -ETIMEDOUT if the SPMI transaction times out.
+ * -EAGAIN if the SPMI transaction is temporarily unavailable
  */
 extern int spmi_command_shutdown(struct spmi_controller *ctrl, u8 sid);
 
