@@ -935,12 +935,12 @@ void validate_output_buffers(struct msm_vidc_inst *inst)
 			dprintk(VIDC_ERR,
 					"Failed : This buffer is with FW 0x%lx\n",
 					binfo->handle->device_addr);
-			return;
+			continue;
 		}
 		buffers_owned_by_driver++;
 	}
 	if (buffers_owned_by_driver != output_buf->buffer_count_actual)
-		dprintk(VIDC_ERR,
+		dprintk(VIDC_WARN,
 			"OUTPUT Buffer count mismatch %d of %d\n",
 			buffers_owned_by_driver,
 			output_buf->buffer_count_actual);
