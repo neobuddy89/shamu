@@ -787,7 +787,7 @@ static ssize_t kgsl_pwrctrl_default_pwrlevel_store(struct device *dev,
 
 	mutex_lock(&device->mutex);
 	pwr->default_pwrlevel = level;
-	pwrscale->profile.initial_freq
+	pwrscale->ext_profile.profile.initial_freq
 			= pwr->pwrlevels[level].gpu_freq;
 
 	mutex_unlock(&device->mutex);
