@@ -1161,6 +1161,24 @@ static inline void move_window_start(struct rq *rq, u64 wallclock)
 	}
 }
 
+static inline u64 scale_exec_time(u64 delta, struct rq *rq)
+{
+	unsigned int cur_freq = rq->cur_freq;
+	int sf;
+
+	if (unlikely(cur_freq > max_possible_freq ||
+		     (cur_freq == rq->max_freq &&
+		      rq->max_freq < rq->max_possible_freq)))
+		cur_freq = rq->max_possible_freq;
+
+	delta = div64_u64(delta  * cur_freq, max_possible_freq);
+	sf = (rq->efficiency * 1024) / max_possible_efficiency;
+	delta *= sf;
+	delta >>= 10;
+
+	return delta;
+}
+
 void update_task_ravg(struct task_struct *p, struct rq *rq,
 				 int update_sum, u64 wallclock)
 {
@@ -1174,6 +1192,8 @@ void update_task_ravg(struct task_struct *p, struct rq *rq,
 	if (sched_use_pelt || !rq->window_start)
 		return;
 
+	lockdep_assert_held(&rq->lock);
+
 	move_window_start(rq, wallclock);
 	window_start = rq->window_start;
 
@@ -1186,7 +1206,7 @@ void update_task_ravg(struct task_struct *p, struct rq *rq,
 
 	do {
 		s64 delta = 0;
-		int n = 0;
+		int nr_full_windows = 0;
 		u64 now = wallclock;
 		u32 sum = 0;
 
@@ -1195,28 +1215,16 @@ void update_task_ravg(struct task_struct *p, struct rq *rq,
 		if (window_start > mark_start) {
 			delta = window_start - mark_start;
 
-			n = div64_u64(delta, window_size);
-			window_start -= n * window_size;
+			nr_full_windows = div64_u64(delta, window_size);
+			window_start -= nr_full_windows * window_size;
 			now = window_start;
 			new_window = 1;
 		}
 
 		if (update_sum) {
-			unsigned int cur_freq = rq->cur_freq;
-			int sf;
-
 			delta = now - mark_start;
+			delta = scale_exec_time(delta, rq);
 
-			if (unlikely(cur_freq > max_possible_freq ||
-				     (cur_freq == rq->max_freq &&
-				      rq->max_freq < rq->max_possible_freq)))
-				cur_freq = rq->max_possible_freq;
-
-			delta = div64_u64(delta  * cur_freq,
-							max_possible_freq);
-			sf = (rq->efficiency * 1024) / max_possible_efficiency;
-			delta *= sf;
-			delta >>= 10;
 			p->ravg.sum += delta;
 			if (unlikely(p->ravg.sum > window_size))
 				p->ravg.sum = window_size;
@@ -1230,11 +1238,12 @@ void update_task_ravg(struct task_struct *p, struct rq *rq,
 
 		update_history(rq, p, p->ravg.sum, 1);
 
-		if (n) {
-			window_start += n * window_size;
+		if (nr_full_windows) {
+			window_start += nr_full_windows * window_size;
 			if (update_sum)
 				sum = window_size;
-			update_history(rq, p, sum, n);
+			sum = scale_exec_time(sum, rq);
+			update_history(rq, p, sum, nr_full_windows);
 
 			/*
 			 * We will always shift curr_contrib into
