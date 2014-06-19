@@ -59,3 +59,4 @@ obj-$(CONFIG_MMI_RAM_INFO) += mmi-ram-info.o
 obj-$(CONFIG_MMI_UNIT_INFO) += mmi-unit-info.o
 
 obj-$(CONFIG_MSM_SHARED_HEAP_ACCESS) += shared_memory.o
+obj-$(CONFIG_MSM_XPU_ERR_FATAL) += scm-xpu.o

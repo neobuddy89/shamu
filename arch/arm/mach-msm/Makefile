@@ -17,7 +17,6 @@ obj-$(CONFIG_HOTPLUG_CPU) += hotplug.o
 obj-$(CONFIG_MSM_AVS_HW) += avs.o
 obj-$(CONFIG_CPU_V7) += idle-v7.o
 
-obj-$(CONFIG_MSM_XPU_ERR_FATAL) += scm-xpu.o
 obj-$(CONFIG_MSM_TEST_QMI_CLIENT) += kernel_test_service_v01.o test_qmi_client.o
 obj-$(CONFIG_PM) += pm-boot.o
 obj-$(CONFIG_MSM_IDLE_STATS) += pm-stats.o
