@@ -98,7 +98,7 @@ static inline int mdss_misr_get(struct mdss_data_type *mdata,
 static inline void mdss_misr_crc_collect(struct mdss_data_type *mdata,
 						int block_id) { }
 
-static inline int create_xlog_debug(struct mdss_data_type *mdata) { }
+static inline int create_xlog_debug(struct mdss_data_type *mdata) { return 0; }
 static inline void mdss_xlog(const char *name, ...) { }
 static inline void mdss_xlog_dump(void) { }
 static inline void mdss_dump_reg(char __iomem *base, int len) { }
