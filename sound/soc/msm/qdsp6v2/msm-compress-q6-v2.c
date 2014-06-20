@@ -1576,7 +1576,7 @@ static int msm_compr_pointer(struct snd_compr_stream *cstream,
 		tstamp.pcm_io_frames = 0;
 		memcpy(arg, &tstamp, sizeof(struct snd_compr_tstamp));
 		spin_unlock_irqrestore(&prtd->lock, flags);
-		return -EINVAL;
+		return -ENETRESET;
 	}
 
 	gapless_transition = prtd->gapless_state.gapless_transition;
@@ -1594,7 +1594,10 @@ static int msm_compr_pointer(struct snd_compr_stream *cstream,
 		if (rc < 0) {
 			pr_err("%s: Get Session Time return value =%lld\n",
 				__func__, timestamp);
-			return -EAGAIN;
+			if (atomic_read(&prtd->error))
+				return -ENETRESET;
+			else
+				return -EAGAIN;
 		}
 	}
 
@@ -1675,7 +1678,7 @@ static int msm_compr_copy(struct snd_compr_stream *cstream,
 	if (atomic_read(&prtd->error)) {
 		pr_err("%s Got RESET EVENTS notification", __func__);
 		spin_unlock_irqrestore(&prtd->lock, flags);
-		return -EINVAL;
+		return -ENETRESET;
 	}
 	spin_unlock_irqrestore(&prtd->lock, flags);
 
