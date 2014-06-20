@@ -1285,6 +1285,10 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 					(uint32_t *)data->payload, ac->priv);
 		apr_reset(ac->apr);
 		ac->apr = NULL;
+		atomic_set(&ac->time_flag, 0);
+		atomic_set(&ac->cmd_state, 0);
+		wake_up(&ac->time_wait);
+		wake_up(&ac->cmd_wait);
 		return 0;
 	}
 
