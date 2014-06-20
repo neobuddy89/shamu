@@ -1015,7 +1015,11 @@ int msm_vidc_dqbuf(void *instance, struct v4l2_buffer *b)
 	}
 
 	if (is_dynamic_output_buffer_mode(b, inst)) {
+		if (!buffer_info)
+			return -EINVAL;
+
 		buffer_info->dequeued = true;
+
 		dprintk(VIDC_DBG, "[DEQUEUED]: fd[0] = %d\n",
 			buffer_info->fd[0]);
 		mutex_lock(&inst->registeredbufs.lock);
@@ -1131,8 +1135,8 @@ void *msm_vidc_smem_get_client(void *instance)
 	struct msm_vidc_inst *inst = instance;
 
 	if (!inst || !inst->mem_client) {
-		dprintk(VIDC_ERR, "%s: invalid instance or client = %p %p\n",
-				__func__, inst, inst->mem_client);
+		dprintk(VIDC_ERR, "%s: invalid instance or client = %p\n",
+				__func__, inst);
 		return NULL;
 	}
 

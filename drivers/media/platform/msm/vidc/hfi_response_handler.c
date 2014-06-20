@@ -755,6 +755,12 @@ static void hfi_process_sess_get_prop_buf_req(
 	hfi_buf_req = (struct hfi_buffer_requirements *)
 		&prop->rg_property_data[1];
 
+	if (!hfi_buf_req) {
+		dprintk(VIDC_ERR, "%s - invalid buffer req pointer\n",
+			__func__);
+		return;
+	}
+
 	while (req_bytes) {
 		if ((hfi_buf_req->buffer_size) &&
 			((hfi_buf_req->buffer_count_min > hfi_buf_req->
