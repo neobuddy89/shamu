@@ -488,12 +488,15 @@ static ssize_t mdss_debug_factor_write(struct file *file,
 		    const char __user *user_buf, size_t count, loff_t *ppos)
 {
 	struct mdss_fudge_factor *factor  = file->private_data;
-	u32 numer = factor->numer;
-	u32 denom = factor->denom;
+	u32 numer;
+	u32 denom;
 	char buf[32];
 
 	if (!factor)
 		return -ENODEV;
+
+	numer = factor->numer;
+	denom = factor->denom;
 
 	if (count >= sizeof(buf))
 		return -EFAULT;
