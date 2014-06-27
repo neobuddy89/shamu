@@ -3840,6 +3840,8 @@ static int mdss_mdp_overlay_on(struct msm_fb_data_type *mfd)
 		if (IS_ERR_OR_NULL(ctl))
 			return PTR_ERR(ctl);
 		mdp5_data->ctl = ctl;
+	} else {
+		ctl = mdp5_data->ctl;
 	}
 
 	if (mdss_fb_is_power_on(mfd)) {
