@@ -1313,13 +1313,8 @@ static int msm_compr_trigger(struct snd_compr_stream *cstream, int cmd)
 		if (!prtd->gapless_state.gapless_transition) {
 			pr_debug("issue CMD_FLUSH stream_id %d\n", stream_id);
 			spin_unlock_irqrestore(&prtd->lock, flags);
-			rc = q6asm_stream_cmd(
+			q6asm_stream_cmd(
 				prtd->audio_client, CMD_FLUSH, stream_id);
-			if (rc < 0) {
-				pr_err("%s: flush cmd failed rc=%d\n",
-							__func__, rc);
-				return rc;
-			}
 			spin_lock_irqsave(&prtd->lock, flags);
 		} else {
 			prtd->first_buffer = 0;
