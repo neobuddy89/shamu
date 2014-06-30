@@ -2493,7 +2493,7 @@ static int wcd_cpe_dealloc_lsm_session(void *core_handle,
 	if (!session) {
 		dev_err(core->dev,
 			"%s: Invalid lsm session\n", __func__);
-		return 0;
+		return -EINVAL;
 	}
 
 	dev_dbg(core->dev, "%s: session %d being deallocated\n",
