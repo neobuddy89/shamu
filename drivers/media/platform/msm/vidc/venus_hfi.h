@@ -174,6 +174,7 @@ struct venus_hfi_device {
 	u32 intr_status;
 	u32 device_id;
 	u32 clk_load;
+	u32 codecs_enabled;
 	u32 last_packet_type;
 	struct {
 		struct vidc_bus_vote_data *vote_data;
