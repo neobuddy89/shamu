@@ -1130,10 +1130,12 @@ static int __ref update_offline_cores(int val)
 {
 	uint32_t cpu = 0;
 	int ret = 0;
+	uint32_t previous_cpus_offlined = 0;
 
 	if (!core_control_enabled)
 		return 0;
 
+	previous_cpus_offlined = msm_thermal_info.cpus_offlined;
 	msm_thermal_info.cpus_offlined = msm_thermal_info.core_control_mask & val;
 
 	for_each_possible_cpu(cpu) {
@@ -1149,7 +1151,7 @@ static int __ref update_offline_cores(int val)
 					cpu, ret);
 			else
 				pr_debug("Offlined CPU%d\n", cpu);
-		} else if (online_core) {
+		} else if (online_core && (previous_cpus_offlined & BIT(cpu))) {
 #ifdef CONFIG_STATE_HELPER
 			thermal_notify(cpu, 1);
 #endif
