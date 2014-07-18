@@ -479,9 +479,9 @@ int send_asm_custom_topology(struct audio_client *ac)
 		result = -ETIMEDOUT;
 		goto err_unmap;
 	}
-	if (atomic_read(&ac->cmd_state) < 0) {
+	if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s: DSP returned error[%d]\n",
-			__func__, atomic_read(&ac->cmd_state));
+			__func__, atomic_read(&ac->mem_state));
 		result = -EINVAL;
 		goto err_unmap;
 	}
@@ -1207,8 +1207,9 @@ static int32_t q6asm_srvc_callback(struct apr_client_data *data, void *priv)
 				if (payload[0] ==
 				    ASM_CMD_SHARED_MEM_UNMAP_REGIONS)
 					atomic_set(&ac->unmap_cb_success, 0);
-				atomic_set(&ac->cmd_state, -payload[1]);
-				wake_up(&ac->cmd_wait);
+
+				atomic_set(&ac->mem_state, -payload[1]);
+				wake_up(&ac->mem_wait);
 			} else {
 				if (payload[0] ==
 				    ASM_CMD_SHARED_MEM_UNMAP_REGIONS)
@@ -1405,7 +1406,16 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 			break;
 		case ASM_CMD_ADD_TOPOLOGIES:
 			pr_debug("%s:Payload = [0x%x]stat[0x%x]\n",
+				 __func__, payload[0], payload[1]);
+			if (payload[1] != 0) {
+				pr_err("%s: cmd = 0x%x returned error = 0x%x\n",
 					 __func__, payload[0], payload[1]);
+				if (wakeup_flag) {
+					atomic_set(&ac->mem_state, -payload[1]);
+					wake_up(&ac->mem_wait);
+				}
+				return 0;
+			}
 			if (atomic_read(&ac->mem_state) && wakeup_flag) {
 				atomic_set(&ac->mem_state, 0);
 				wake_up(&ac->mem_wait);
@@ -3465,9 +3475,9 @@ int q6asm_memory_map(struct audio_client *ac, phys_addr_t buf_add, int dir,
 		kfree(buffer_node);
 		goto fail_cmd;
 	}
-	if (atomic_read(&ac->cmd_state) < 0) {
+	if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s: DSP returned error[%d] for memory_map\n",
-			__func__, atomic_read(&ac->cmd_state));
+			__func__, atomic_read(&ac->mem_state));
 		rc = -EINVAL;
 		kfree(buffer_node);
 		goto fail_cmd;
@@ -3535,9 +3545,9 @@ int q6asm_memory_unmap(struct audio_client *ac, phys_addr_t buf_add, int dir)
 			__func__, mem_unmap.mem_map_handle);
 		rc = -ETIMEDOUT;
 		goto fail_cmd;
-	} else if (atomic_read(&ac->cmd_state) < 0) {
+	} else if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s DSP returned error %d map handle 0x%x\n",
-			__func__, atomic_read(&ac->cmd_state),
+			__func__, atomic_read(&ac->mem_state),
 			mem_unmap.mem_map_handle);
 		rc = -EINVAL;
 		goto fail_cmd;
@@ -3658,9 +3668,9 @@ static int q6asm_memory_map_regions(struct audio_client *ac, int dir,
 		kfree(buffer_node);
 		goto fail_cmd;
 	}
-	if (atomic_read(&ac->cmd_state) < 0) {
+	if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s DSP returned error for memory_map %d\n",
-			__func__, atomic_read(&ac->cmd_state));
+			__func__, atomic_read(&ac->mem_state));
 		rc = -EINVAL;
 		kfree(buffer_node);
 		goto fail_cmd;
@@ -3742,9 +3752,9 @@ static int q6asm_memory_unmap_regions(struct audio_client *ac, int dir)
 			__func__, mem_unmap.mem_map_handle);
 		rc = -ETIMEDOUT;
 		goto fail_cmd;
-	} else if (atomic_read(&ac->cmd_state) < 0) {
+	} else if (atomic_read(&ac->mem_state) < 0) {
 		pr_err("%s: DSP returned error[%d]\n",
-				__func__, atomic_read(&ac->cmd_state));
+				__func__, atomic_read(&ac->mem_state));
 		rc = -EINVAL;
 		goto fail_cmd;
 	} else if (atomic_read(&ac->unmap_cb_success) == 0) {
