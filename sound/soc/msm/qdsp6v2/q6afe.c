@@ -90,7 +90,6 @@ void afe_set_aanc_info(struct aanc_data *q6_aanc_info)
 		this_afe.aanc_info.aanc_tx_port);
 }
 
-
 static int32_t afe_callback(struct apr_client_data *data, void *priv)
 {
 	int i;
@@ -225,7 +224,6 @@ static int32_t afe_callback(struct apr_client_data *data, void *priv)
 	}
 	return 0;
 }
-
 
 int afe_get_port_type(u16 port_id)
 {
@@ -3636,7 +3634,7 @@ int afe_spk_prot_get_calib_data(struct afe_spkr_prot_get_vi_calib *calib_resp)
 	}
 	memcpy(&calib_resp->res_cfg , &this_afe.calib_data.res_cfg,
 		sizeof(this_afe.calib_data.res_cfg));
-	pr_debug("%s: state %d resistance %d\n", __func__,
+	pr_info("%s: state %d resistance %d\n", __func__,
 			 calib_resp->res_cfg.th_vi_ca_state,
 			 calib_resp->res_cfg.r0_cali_q24);
 	ret = 0;
