@@ -7629,7 +7629,8 @@ static void __perf_event_stop_swclock(void *__info)
 	struct perf_event *event, *tmp;
 
 	list_for_each_entry_safe(event, tmp, &ctx->event_list, event_entry) {
-		if (event->attr.config == PERF_COUNT_SW_CPU_CLOCK)
+		if (event->attr.config == PERF_COUNT_SW_CPU_CLOCK &&
+				event->attr.type == PERF_TYPE_SOFTWARE)
 			cpu_clock_event_stop(event, 0);
 	}
 }
@@ -7677,7 +7678,9 @@ static void perf_event_start_swclock(int cpu)
 			list_for_each_entry_safe(event, tmp, &ctx->event_list,
 							event_entry) {
 				if (event->attr.config ==
-						PERF_COUNT_SW_CPU_CLOCK)
+						PERF_COUNT_SW_CPU_CLOCK &&
+						event->attr.type ==
+							PERF_TYPE_SOFTWARE)
 					cpu_clock_event_start(event, 0);
 			}
 		}
