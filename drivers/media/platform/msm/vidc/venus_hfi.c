@@ -1500,10 +1500,10 @@ static inline int venus_hfi_power_on(struct venus_hfi_device *device)
 	}
 
 	/* iommu_attach makes call to TZ for restore_sec_cfg. With this call
-	* TZ accesses the VMIDMT block which needs all the Venus clocks.
-	* While going to power collapse these clocks were turned OFF.
-	* Hence enabling the Venus clocks before iommu_attach call.
-	*/
+	 * TZ accesses the VMIDMT block which needs all the Venus clocks.
+	 * While going to power collapse these clocks were turned OFF.
+	 * Hence enabling the Venus clocks before iommu_attach call.
+	 */
 
 	rc = venus_hfi_iommu_attach(device);
 	if (rc) {
@@ -3741,17 +3741,26 @@ static int venus_hfi_load_fw(void *dev)
 		return -EINVAL;
 	}
 
-	rc = venus_hfi_iommu_attach(device);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to attach iommu\n");
-		goto fail_iommu_attach;
-	}
-
 	rc = venus_hfi_enable_regulators(device);
 	if (rc) {
 		dprintk(VIDC_ERR, "%s : Failed to enable GDSC, Err = %d\n",
 			__func__, rc);
 		goto fail_enable_gdsc;
+	}
+
+	/* iommu_attach makes call to TZ for restore_sec_cfg. With this call
+	 * TZ accesses the VMIDMT block which needs all the Venus clocks.
+	 */
+	rc = venus_hfi_prepare_enable_clks(device);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed to enable clocks: %d\n", rc);
+		goto fail_enable_clks;
+	}
+
+	rc = venus_hfi_iommu_attach(device);
+	if (rc) {
+		dprintk(VIDC_ERR, "Failed to attach iommu\n");
+		goto fail_iommu_attach;
 	}
 
 	if (!device->resources.fw.cookie) {
@@ -3765,13 +3774,6 @@ static int venus_hfi_load_fw(void *dev)
 	}
 	device->power_enabled = true;
 
-	/* Clocks can be enabled only after pil_get since
-	 * gdsc is turned-on in pil_get*/
-	rc = venus_hfi_prepare_enable_clks(device);
-	if (rc) {
-		dprintk(VIDC_ERR, "Failed to enable clocks: %d\n", rc);
-		goto fail_enable_clks;
-	}
 	/* Hand off control of regulators to h/w _after_ enabling clocks */
 	venus_hfi_enable_hw_power_collapse(device);
 
@@ -3783,16 +3785,16 @@ static int venus_hfi_load_fw(void *dev)
 
 	return rc;
 fail_protect_mem:
-	venus_hfi_disable_unprepare_clks(device);
-fail_enable_clks:
-	subsystem_put(device->resources.fw.cookie);
-fail_load_fw:
-	device->resources.fw.cookie = NULL;
-	venus_hfi_disable_regulators(device);
 	device->power_enabled = false;
-fail_enable_gdsc:
+	subsystem_put(device->resources.fw.cookie);
+	device->resources.fw.cookie = NULL;
+fail_load_fw:
 	venus_hfi_iommu_detach(device);
 fail_iommu_attach:
+	venus_hfi_disable_unprepare_clks(device);
+fail_enable_clks:
+	venus_hfi_disable_regulators(device);
+fail_enable_gdsc:
 	return rc;
 }
 
