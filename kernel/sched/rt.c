@@ -1522,6 +1522,7 @@ next_idx:
 
 static DEFINE_PER_CPU(cpumask_var_t, local_cpu_mask);
 
+#ifdef CONFIG_SCHED_HMP
 static int find_lowest_rq_hmp(struct task_struct *task)
 {
 	struct cpumask *lowest_mask = __get_cpu_var(local_cpu_mask);
@@ -1562,6 +1563,12 @@ static int find_lowest_rq_hmp(struct task_struct *task)
 	}
 	return best_cpu;
 }
+#else
+static int find_lowest_rq_hmp(struct task_struct *task)
+{
+	return -1;
+}
+#endif
 
 static int find_lowest_rq(struct task_struct *task)
 {
