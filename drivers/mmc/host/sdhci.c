@@ -737,7 +737,7 @@ static void sdhci_adma_table_post(struct sdhci_host *host,
 	u8 *align;
 	char *buffer;
 	unsigned long flags;
-	bool has_unaligned;
+	bool has_unaligned = false;
 
 	if (data->flags & MMC_DATA_READ)
 		direction = DMA_FROM_DEVICE;
@@ -748,14 +748,16 @@ static void sdhci_adma_table_post(struct sdhci_host *host,
 			 host->align_buf_sz, direction);
 
 	/* Do a quick scan of the SG list for any unaligned mappings */
-	has_unaligned = false;
-	for_each_sg(data->sg, sg, host->sg_count, i)
-		if (sg_dma_address(sg) & (host->align_bytes - 1)) {
-			has_unaligned = true;
-			break;
+	if (data->flags & MMC_DATA_READ) {
+		for_each_sg(data->sg, sg, host->sg_count, i) {
+			if (sg_dma_address(sg) & (host->align_bytes - 1)) {
+				has_unaligned = true;
+				break;
+			}
 		}
+	}
 
-	if (has_unaligned && data->flags & MMC_DATA_READ) {
+	if (has_unaligned) {
 		dma_sync_sg_for_cpu(mmc_dev(host->mmc), data->sg,
 			data->sg_len, direction);
 
