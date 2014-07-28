@@ -1422,6 +1422,7 @@ static void subsys_free_irqs(struct subsys_device *subsys)
 struct subsys_device *subsys_register(struct subsys_desc *desc)
 {
 	struct subsys_device *subsys;
+	struct device_node *ofnode = desc->dev->of_node;
 	int ret;
 
 	subsys = kzalloc(sizeof(*subsys), GFP_KERNEL);
@@ -1466,7 +1467,7 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 		goto err_register;
 	}
 
-	if (desc->dev->of_node) {
+	if (ofnode) {
 		ret = subsys_parse_devicetree(desc);
 		if (ret)
 			goto err_register;
@@ -1475,7 +1476,7 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 
 		ret = subsys_setup_irqs(subsys);
 		if (ret < 0)
-			goto err_register;
+			goto err_setup_irqs;
 	}
 
 	mutex_lock(&subsys_list_lock);
@@ -1484,7 +1485,9 @@ struct subsys_device *subsys_register(struct subsys_desc *desc)
 	mutex_unlock(&subsys_list_lock);
 
 	return subsys;
-
+err_setup_irqs:
+	if (ofnode)
+		subsys_remove_restart_order(ofnode);
 err_register:
 	subsys_debugfs_remove(subsys);
 err_debugfs:
