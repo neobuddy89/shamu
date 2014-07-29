@@ -313,6 +313,23 @@ void mdss_enable_irq(struct mdss_hw *hw)
 }
 EXPORT_SYMBOL(mdss_enable_irq);
 
+void mdss_enable_irq_wake(bool enable)
+{
+	unsigned long irq_flags;
+
+	spin_lock_irqsave(&mdss_lock, irq_flags);
+	if (enable && !mdss_res->irq_wakeup_en && mdss_res->irq_mask) {
+		enable_irq_wake(mdss_res->irq);
+		mdss_res->irq_wakeup_en = true;
+	} else if (!enable && mdss_res->irq_wakeup_en) {
+		disable_irq_wake(mdss_res->irq);
+		mdss_res->irq_wakeup_en = false;
+	}
+	spin_unlock_irqrestore(&mdss_lock, irq_flags);
+	pr_debug("%s en=%d mask=%x irq_wakeup_en=%d", __func__,
+		enable, mdss_res->irq_mask, mdss_res->irq_wakeup_en);
+}
+
 void mdss_disable_irq(struct mdss_hw *hw)
 {
 	unsigned long irq_flags;

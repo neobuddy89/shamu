@@ -101,6 +101,9 @@ struct hdmi_tx_ctrl {
 
 	void *codec_data;
 	u32 (*play_short_silent_audio) (void *codec_data);
+	bool power_enabled[HDMI_TX_MAX_PM];
 };
 
+#define IS_CEC_WAKEUP_EN(ctrl) \
+	is_hdmi_cec_wakeup_en((ctrl)->feature_data[HDMI_TX_FEAT_CEC])
 #endif /* __MDSS_HDMI_TX_H__ */
