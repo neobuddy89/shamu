@@ -26,4 +26,5 @@ int hdmi_cec_config(void *cec_ctrl);
 int hdmi_cec_isr(void *cec_ctrl);
 void hdmi_cec_deinit(void *cec_ctrl);
 void *hdmi_cec_init(struct hdmi_cec_init_data *init_data);
+bool is_hdmi_cec_wakeup_en(void *cec_ctrl);
 #endif /* __MDSS_HDMI_CEC_H__ */

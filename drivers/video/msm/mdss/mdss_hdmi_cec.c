@@ -46,6 +46,7 @@ struct hdmi_cec_ctrl {
 	bool cec_enabled;
 	bool compliance_response_enabled;
 	bool cec_engine_configed;
+	bool cec_wakeup_en;
 
 	u8 cec_logical_addr;
 	u32 cec_msg_wr_status;
@@ -516,7 +517,9 @@ static ssize_t hdmi_wta_cec_enable(struct device *dev,
 		DEV_ERR("%s: kstrtoint failed.\n", __func__);
 		return -EPERM;
 	}
-	cec_en = (val == 1) ? true : false;
+	cec_en = (val & 0x1) ? true : false;
+	/* bit 1 is used for wakeup feature */
+	cec_ctrl->cec_wakeup_en = ((val & 0x3) == 0x3) ? true : false;
 
 	spin_lock_irqsave(&cec_ctrl->lock, flags);
 	if (cec_ctrl->cec_enabled == cec_en) {
@@ -777,6 +780,16 @@ static struct attribute_group hdmi_cec_fs_attr_group = {
 	.attrs = hdmi_cec_fs_attrs,
 };
 
+bool is_hdmi_cec_wakeup_en(void *input)
+{
+	struct hdmi_cec_ctrl *cec_ctrl = (struct hdmi_cec_ctrl *)input;
+	if (!cec_ctrl) {
+		DEV_ERR("%s: Invalid input\n", __func__);
+		return 0;
+	}
+	return cec_ctrl->cec_wakeup_en;
+} /* is_hdmi_cec_wakeup_en */
+
 int hdmi_cec_isr(void *input)
 {
 	int rc = 0;
@@ -844,6 +857,9 @@ int hdmi_cec_deconfig(void *input)
 		DEV_ERR("%s: Invalid input\n", __func__);
 		return -EPERM;
 	}
+
+	if (cec_ctrl->cec_wakeup_en)
+		return 0;
 
 	hdmi_cec_disable(cec_ctrl);
 
