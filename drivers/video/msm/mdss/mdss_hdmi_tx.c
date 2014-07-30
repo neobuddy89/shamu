@@ -1384,6 +1384,8 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 
 		hdmi_tx_send_cable_notification(hdmi_ctrl, true);
 	} else {
+		hdmi_tx_config_avmute(hdmi_ctrl, true);
+
 		hdmi_tx_set_audio_switch_node(hdmi_ctrl, 0);
 		hdmi_tx_wait_for_audio_engine(hdmi_ctrl);
 
