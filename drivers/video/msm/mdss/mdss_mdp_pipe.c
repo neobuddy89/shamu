@@ -742,6 +742,7 @@ static void mdss_mdp_pipe_free(struct kref *kref)
 	pipe->mfd = NULL;
 	pipe->mixer_left = pipe->mixer_right = NULL;
 	memset(&pipe->scale, 0, sizeof(struct mdp_scale_data));
+	memset(&pipe->req_data, 0, sizeof(pipe->req_data));
 }
 
 static bool mdss_mdp_check_pipe_in_use(struct mdss_mdp_pipe *pipe)
@@ -1331,7 +1332,7 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 		 (pipe->mixer_left->type == MDSS_MDP_MIXER_TYPE_WRITEBACK) &&
 		 (ctl->mdata->mixer_switched)) || ctl->roi_changed;
 	if ((!(pipe->flags & MDP_VPU_PIPE) &&
-			(src_data == NULL || !pipe->has_buf)) ||
+			(src_data == NULL)) ||
 			(pipe->flags & MDP_SOLID_FILL)) {
 		pipe->params_changed = 0;
 		mdss_mdp_pipe_solidfill_setup(pipe);
@@ -1367,9 +1368,9 @@ int mdss_mdp_pipe_queue_data(struct mdss_mdp_pipe *pipe,
 			opmode);
 	}
 
-	if (src_data == NULL || !pipe->has_buf) {
-		pr_debug("src_data=%pK has_buf=%d pipe num=%dx",
-				src_data, pipe->has_buf, pipe->num);
+	if (src_data == NULL) {
+		pr_debug("src_data=%pK pipe num=%dx\n",
+				src_data, pipe->num);
 		goto update_nobuf;
 	}
 
