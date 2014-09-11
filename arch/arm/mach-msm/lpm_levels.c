@@ -30,6 +30,7 @@
 #include <soc/qcom/pm.h>
 #include <soc/qcom/rpm-notifier.h>
 #include <soc/qcom/event_timer.h>
+#include <trace/events/power.h>
 
 #define SCLK_HZ (32768)
 
@@ -774,13 +775,22 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 		return -EPERM;
 	}
 
+	trace_cpu_idle_rcuidle(idx, dev->cpu);
+
+	if (need_resched()) {
+		dev->last_residency = 0;
+		goto exit;
+	}
+
 	lpm_enter_low_power(&sys_state, idx, true);
 
 	time = ktime_to_ns(ktime_get()) - time;
 	do_div(time, 1000);
 	dev->last_residency = (int)time;
 
+exit:
 	local_irq_enable();
+	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, dev->cpu);
 	return idx;
 }
 
