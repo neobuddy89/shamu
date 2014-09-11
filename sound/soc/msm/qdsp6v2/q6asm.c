@@ -924,7 +924,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 	int cnt = 0;
 	int rc = 0;
 	struct audio_buffer *buf;
-	int len;
+	size_t len;
 
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
 		return -EINVAL;
@@ -960,7 +960,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 					&buf[cnt].client, &buf[cnt].handle,
 					      bufsz,
 					      (ion_phys_addr_t *)&buf[cnt].phys,
-					      (size_t *)&len,
+					      &len,
 					      &buf[cnt].data);
 					if (rc) {
 						pr_err("%s: ION Get Physical for AUDIO failed, rc = %d\n",
@@ -1004,7 +1004,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 	int cnt = 0;
 	int rc = 0;
 	struct audio_buffer *buf;
-	int len;
+	size_t len;
 	int bytes_to_alloc;
 
 	if (!(ac) || ((dir != IN) && (dir != OUT)))
@@ -1039,7 +1039,7 @@ int q6asm_audio_client_buf_alloc_contiguous(unsigned int dir,
 
 	rc = msm_audio_ion_alloc("audio_client", &buf[0].client, &buf[0].handle,
 		bytes_to_alloc,
-		(ion_phys_addr_t *)&buf[0].phys, (size_t *)&len,
+		(ion_phys_addr_t *)&buf[0].phys, &len,
 		&buf[0].data);
 	if (rc) {
 		pr_err("%s: Audio ION alloc is failed, rc = %d\n",
