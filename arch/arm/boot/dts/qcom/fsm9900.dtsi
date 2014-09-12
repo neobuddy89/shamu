@@ -584,6 +584,7 @@
 		qcom,bam-pipe-pair = <1>;
 		qcom,ce-hw-instance = <1>;
 		qcom,ce-device = <0>;
+		qcom,ce-opp-freq = <100000000>;
 	};
 	qcom,qcrypto@fe040000 {
 		compatible = "qcom,qcrypto";
@@ -594,6 +595,7 @@
 		qcom,bam-pipe-pair = <1>;
 		qcom,ce-hw-instance = <6>;
 		qcom,ce-device = <1>;
+		qcom,ce-opp-freq = <100000000>;
 	};
 	qcom,qcrypto@fe000000 {
 		compatible = "qcom,qcrypto";
@@ -604,6 +606,7 @@
 		qcom,bam-pipe-pair = <1>;
 		qcom,ce-hw-instance = <7>;
 		qcom,ce-device = <2>;
+		qcom,ce-opp-freq = <100000000>;
 	};
 
 	qcom,qcota@fe140000 {
