@@ -701,7 +701,7 @@
 		qcom,msm-bus,vectors-KBps =
 				<56 512 0 0>,
 				<56 512 3936000 393600>;
-		qcom,ce-opp-freq = <100000000>;
+		qcom,ce-opp-freq = <171430000>;
 	};
 
         qcom,qcrypto@fd440000 {
@@ -723,7 +723,7 @@
 		qcom,msm-bus,vectors-KBps =
 				<56 512 0 0>,
 				<56 512 3936000 393600>;
-		qcom,ce-opp-freq = <100000000>;
+		qcom,ce-opp-freq = <171430000>;
 	};
 
 	wcd9xxx_intc: wcd9xxx-irq {
