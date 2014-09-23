@@ -141,6 +141,7 @@ struct cci_device {
 	uint8_t cci_gpio_tbl_size;
 	uint8_t master_clk_init[MASTER_MAX];
 	struct regulator *ioreg;
+	uint32_t cycles_per_us;
 };
 
 enum msm_cci_i2c_cmd_type {
