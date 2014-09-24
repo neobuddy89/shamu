@@ -31,6 +31,7 @@
 #include <linux/idr.h>
 #include <linux/sysfs.h>
 #include <linux/ratelimit.h>
+#include <linux/show_mem_notifier.h>
 
 #include "zram_drv.h"
 
@@ -68,6 +69,48 @@ static inline bool init_done(struct zram *zram)
 {
 	return zram->disksize;
 }
+
+static void zram_show_mem(struct zram *zram)
+{
+	if (!down_read_trylock(&zram->init_lock))
+		return;
+
+	if (init_done(zram)) {
+		struct zram_meta *meta = zram->meta;
+		
+		u64 val;
+		u64 data_size;
+
+		val = zs_get_total_pages(meta->mem_pool);
+		data_size = atomic64_read(&zram->stats.compr_data_size);
+		pr_info("%s mem_used_total = %llu\n", zram->disk->disk_name, val);
+		pr_info("%s compr_data_size = %llu\n", zram->disk->disk_name,
+			(unsigned long long)data_size);
+		pr_info("%s orig_data_size = %llu\n", zram->disk->disk_name,
+			(u64)atomic64_read(&zram->stats.pages_stored));
+	}
+
+	up_read(&zram->init_lock);
+}
+
+static int zram_show_mem_cb(int id, void *ptr, void *data)
+{
+	zram_show_mem(ptr);
+	return 0;
+}
+
+static int zram_show_mem_notifier(struct notifier_block *nb,
+				unsigned long action,
+				void *data)
+{
+	idr_for_each(&zram_index_idr, &zram_show_mem_cb, NULL);
+
+	return 0;
+}
+
+static struct notifier_block zram_show_mem_notifier_block = {
+	.notifier_call = zram_show_mem_notifier
+};
 
 static inline struct zram *dev_to_zram(struct device *dev)
 {
@@ -1388,6 +1431,7 @@ static int __init zram_init(void)
 		num_devices--;
 	}
 
+	show_mem_notifier_register(&zram_show_mem_notifier_block);
 	return 0;
 
 out_error:
