@@ -247,6 +247,7 @@ config SND_SOC_APQ8084
 	select SND_SOC_TPA6165A2
 	select SND_SOC_TFA9890
 	select SND_SOC_FSA8500
+	select SND_HWDEP
 
 	help
 	 To add support for SoC audio on APQ8084.
