@@ -70,6 +70,8 @@ struct reg_info {
  * @ramdump_dev: ramdump device pointer
  * @pas_id: the PAS id for tz
  * @bus_client: bus client id
+ * @enable_bus_scaling: set to true if PIL needs to vote for
+ *			bus bandwidth
  * @stop_ack: state of completion of stop ack
  * @desc: PIL descriptor
  * @subsys: subsystem device pointer
@@ -88,6 +90,7 @@ struct pil_tz_data {
 	void *ramdump_dev;
 	u32 pas_id;
 	u32 bus_client;
+	bool enable_bus_scaling;
 	struct completion stop_ack;
 	struct pil_desc desc;
 	struct subsys_device *subsys;
@@ -386,7 +389,7 @@ static int of_read_bus_pdata(struct platform_device *pdev,
 
 	d->bus_client = msm_bus_scale_register_client(pdata);
 	if (!d->bus_client)
-		return -EINVAL;
+		pr_warn("%s: Unable to register bus client\n", __func__);
 
 	return 0;
 }
@@ -425,6 +428,7 @@ static int piltz_resc_init(struct platform_device *pdev, struct pil_tz_data *d)
 	d->proxy_reg_count = count;
 
 	if (of_find_property(dev->of_node, "qcom,msm-bus,name", &len)) {
+		d->enable_bus_scaling = true;
 		rc = of_read_bus_pdata(pdev, d);
 		if (rc) {
 			dev_err(dev, "Failed to setup bus scaling client.\n");
@@ -557,7 +561,9 @@ static int pil_make_proxy_vote(struct pil_desc *pil)
 			dev_err(pil->dev, "bandwidth request failed\n");
 			goto err_bw;
 		}
-	}
+	} else
+		WARN(d->enable_bus_scaling, "Bus scaling not set up for %s!\n",
+					d->subsys_desc.name);
 
 	return 0;
 err_bw:
@@ -577,6 +583,9 @@ static void pil_remove_proxy_vote(struct pil_desc *pil)
 
 	if (d->bus_client)
 		msm_bus_scale_client_update_request(d->bus_client, 0);
+	else
+		WARN(d->enable_bus_scaling, "Bus scaling not set up for %s!\n",
+					d->subsys_desc.name);
 
 	disable_unprepare_clocks(d->proxy_clks, d->proxy_clk_count);
 
