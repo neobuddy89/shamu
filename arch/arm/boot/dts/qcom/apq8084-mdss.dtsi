@@ -328,9 +328,8 @@
 		cell-index = <0>;
 		compatible = "qcom,hdmi-tx";
 		reg =	<0xfd922100 0x380>,
-			<0xfd922500 0x7C>,
 			<0xfc4b8000 0x6100>;
-		reg-names = "core_physical", "phy_physical", "qfprom_physical";
+		reg-names = "core_physical", "qfprom_physical";
 
 		hpd-gdsc-supply = <&gdsc_mdss>;
 		hpd-5v-supply = <&pma8084_mvs1>;
