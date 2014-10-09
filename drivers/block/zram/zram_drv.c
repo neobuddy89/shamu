@@ -87,7 +87,7 @@ static int zram_show_mem_notifier(struct notifier_block *nb,
 			u64 val;
 			u64 data_size;
 
-			val = zs_get_total_size_bytes(meta->mem_pool);
+			val = zs_get_total_pages(meta->mem_pool);
 			data_size = atomic64_read(&zram->stats.compr_data_size);
 			pr_info("Zram[%d] mem_used_total = %llu\n", i, val);
 			pr_info("Zram[%d] compr_data_size = %llu\n", i,
@@ -150,10 +150,10 @@ static ssize_t mem_used_total_show(struct device *dev,
 
 	down_read(&zram->init_lock);
 	if (init_done(zram))
-		val = zs_get_total_size_bytes(meta->mem_pool);
+		val = zs_get_total_pages(meta->mem_pool);
 	up_read(&zram->init_lock);
 
-	return scnprintf(buf, PAGE_SIZE, "%llu\n", val);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", val << PAGE_SHIFT);
 }
 
 static ssize_t max_comp_streams_show(struct device *dev,
