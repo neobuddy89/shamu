@@ -25,12 +25,13 @@ static void kgsl_sync_timeline_signal(struct sync_timeline *timeline,
 	unsigned int timestamp);
 
 static struct sync_pt *kgsl_sync_pt_create(struct sync_timeline *timeline,
-	unsigned int timestamp)
+	struct kgsl_context *context, unsigned int timestamp)
 {
 	struct sync_pt *pt;
 	pt = sync_pt_create(timeline, (int) sizeof(struct kgsl_sync_pt));
 	if (pt) {
 		struct kgsl_sync_pt *kpt = (struct kgsl_sync_pt *) pt;
+		kpt->context = context;
 		kpt->timestamp = timestamp;
 	}
 	return pt;
@@ -48,7 +49,7 @@ static void kgsl_sync_pt_destroy(struct sync_pt *pt)
 static struct sync_pt *kgsl_sync_pt_dup(struct sync_pt *pt)
 {
 	struct kgsl_sync_pt *kpt = (struct kgsl_sync_pt *) pt;
-	return kgsl_sync_pt_create(pt->parent, kpt->timestamp);
+	return kgsl_sync_pt_create(pt->parent, kpt->context, kpt->timestamp);
 }
 
 static int kgsl_sync_pt_has_signaled(struct sync_pt *pt)
@@ -142,8 +143,9 @@ int kgsl_add_fence_event(struct kgsl_device *device,
 
 	event->context = context;
 	event->timestamp = timestamp;
+	event->context = context;
 
-	pt = kgsl_sync_pt_create(context->timeline, timestamp);
+	pt = kgsl_sync_pt_create(context->timeline, context, timestamp);
 	if (pt == NULL) {
 		KGSL_DRV_ERR(device, "kgsl_sync_pt_create failed\n");
 		ret = -ENOMEM;
@@ -231,7 +233,6 @@ static void kgsl_sync_timeline_value_str(struct sync_timeline *sync_timeline,
 		(struct kgsl_sync_timeline *) sync_timeline;
 	unsigned int timestamp_retired = kgsl_sync_get_timestamp(ktimeline,
 		KGSL_TIMESTAMP_RETIRED);
-
 	spin_lock(&ktimeline->lock);
 	snprintf(str, size, "%u retired:%u", ktimeline->last_timestamp,
 		timestamp_retired);
@@ -243,6 +244,14 @@ static void kgsl_sync_pt_value_str(struct sync_pt *sync_pt,
 {
 	struct kgsl_sync_pt *kpt = (struct kgsl_sync_pt *) sync_pt;
 	snprintf(str, size, "%u", kpt->timestamp);
+}
+
+static void kgsl_sync_pt_log(struct sync_pt *sync_pt)
+{
+	struct kgsl_sync_pt *kpt = (struct kgsl_sync_pt *) sync_pt;
+	pr_info("-----\n");
+	kgsl_context_dump(kpt->context);
+	pr_info("-----\n");
 }
 
 static void kgsl_sync_timeline_release_obj(struct sync_timeline *sync_timeline)
@@ -262,6 +271,7 @@ static const struct sync_timeline_ops kgsl_sync_timeline_ops = {
 	.timeline_value_str = kgsl_sync_timeline_value_str,
 	.pt_value_str = kgsl_sync_pt_value_str,
 	.release_obj = kgsl_sync_timeline_release_obj,
+	.pt_log = kgsl_sync_pt_log,
 };
 
 int kgsl_sync_timeline_create(struct kgsl_context *context)
