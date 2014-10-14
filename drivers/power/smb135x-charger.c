@@ -436,6 +436,7 @@ struct smb135x_chg {
 	bool				poll_fast;
 	bool				hvdcp_powerup;
 	int				prev_batt_health;
+	bool				hb_running;
 };
 
 static struct smb135x_chg *the_chip;
@@ -2740,12 +2741,18 @@ static void heartbeat_work(struct work_struct *work)
 				heartbeat_work.work);
 	bool poll_status = chip->poll_fast;
 
-	if (smb135x_get_prop_batt_capacity(chip, &batt_soc) ||
+	if (!chip->resume_completed ||
+	    smb135x_get_prop_batt_capacity(chip, &batt_soc) ||
 	    smb135x_get_prop_batt_health(chip, &batt_health)) {
+		dev_warn(chip->dev, "HB Failed to run resume = %d!\n",
+			 (int)chip->resume_completed);
 		schedule_delayed_work(&chip->heartbeat_work,
 				      msecs_to_jiffies(1000));
 		return;
 	}
+
+	smb_stay_awake(&chip->smb_wake_source);
+	chip->hb_running = true;
 
 	dev_dbg(chip->dev, "HB Pound!\n");
 	cancel_delayed_work(&chip->src_removal_work);
@@ -2840,7 +2847,7 @@ static void heartbeat_work(struct work_struct *work)
 
 	schedule_delayed_work(&chip->heartbeat_work,
 			      msecs_to_jiffies(60000));
-
+	chip->hb_running = false;
 	if (!usb_present && !dc_present)
 		smb_relax(&chip->smb_wake_source);
 }
@@ -5122,6 +5129,7 @@ static int smb135x_charger_probe(struct i2c_client *client,
 	chip->dc_therm_lvl_sel = -EINVAL;
 	chip->hvdcp_powerup = false;
 
+	chip->hb_running = false;
 
 	wakeup_source_init(&chip->smb_wake_source.source, "smb135x_wake");
 	INIT_DELAYED_WORK(&chip->wireless_insertion_work,
@@ -5516,6 +5524,9 @@ static int smb135x_suspend(struct device *dev)
 	struct i2c_client *client = to_i2c_client(dev);
 	struct smb135x_chg *chip = i2c_get_clientdata(client);
 	int i, rc;
+
+	if (chip->hb_running)
+		return -EAGAIN;
 
 	/* Save the current IRQ config */
 	for (i = 0; i < 3; i++) {
