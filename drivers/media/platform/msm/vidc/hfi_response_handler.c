@@ -753,6 +753,12 @@ static void hfi_process_sess_get_prop_buf_req(
 	hfi_buf_req = (struct hfi_buffer_requirements *)
 		&prop->rg_property_data[1];
 
+	if (!hfi_buf_req) {
+		dprintk(VIDC_ERR, "%s - invalid buffer req pointer\n",
+			__func__);
+		return;
+	}
+
 	while (req_bytes) {
 		if ((hfi_buf_req->buffer_size) &&
 			((hfi_buf_req->buffer_count_min > hfi_buf_req->
@@ -1213,10 +1219,11 @@ static void hfi_process_session_rel_buf_done(
 		struct hfi_msg_session_release_buffers_done_packet *pkt)
 {
 	struct msm_vidc_cb_cmd_done cmd_done;
-	if (!pkt || pkt->size !=
+	if (!pkt || pkt->size <
 		sizeof(struct
 			   hfi_msg_session_release_buffers_done_packet)) {
-		dprintk(VIDC_ERR, "bad packet/packet size: %d\n", pkt->size);
+		dprintk(VIDC_ERR, "bad packet/packet size %d\n",
+			pkt ? pkt->size : 0);
 		return;
 	}
 	dprintk(VIDC_DBG, "RECEIVED:SESSION_RELEASE_BUFFER_DONE[%u]",
