@@ -1807,6 +1807,7 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 	unsigned long flags;
 	struct dwc3_msm *mdwc = container_of(psy, struct dwc3_msm,
 								usb_psy);
+	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
 
 	switch (psp) {
 	case POWER_SUPPLY_PROP_SCOPE:
@@ -1827,6 +1828,12 @@ static int dwc3_msm_power_set_property_usb(struct power_supply *psy,
 				(mdwc->ext_xceiv.id == DWC3_ID_GROUND))
 				mdwc->ext_xceiv.id = mdwc->id_state =
 								DWC3_ID_FLOAT;
+			/*
+			 * Cancel any block reset in progress during disconnect
+			 * and wait for it to finish.
+			 */
+			if (dwc && dwc->err_evt_seen && !mdwc->ext_xceiv.bsv)
+				cancel_work_sync(&mdwc->usb_block_reset_work);
 			/*
 			 * Set debouncing delay to 120ms. Otherwise battery
 			 * charging CDP complaince test fails if delay > 120ms.
