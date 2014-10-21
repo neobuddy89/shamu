@@ -2558,6 +2558,8 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 			} else if (ret == 0) {
 				mdwc->pmic_id_irq = 0;
 			} else {
+				irq_set_status_flags(mdwc->pmic_id_irq,
+						IRQ_NOAUTOEN);
 				ret = devm_request_irq(&pdev->dev,
 						       mdwc->pmic_id_irq,
 						       dwc3_pmic_id_irq,
@@ -2801,6 +2803,7 @@ static int dwc3_msm_probe(struct platform_device *pdev)
 	enable_irq(mdwc->hs_phy_irq);
 	/* Update initial ID state */
 	if (mdwc->pmic_id_irq) {
+		enable_irq(mdwc->pmic_id_irq);
 		mdwc->pmic_id_gpio = of_get_named_gpio(node,
 					"pmic-id-gpio", 0);
 		if (of_property_read_u32(node,
