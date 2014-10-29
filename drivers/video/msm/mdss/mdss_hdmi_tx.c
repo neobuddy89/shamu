@@ -1352,7 +1352,8 @@ static void hdmi_tx_hpd_int_work(struct work_struct *work)
 		return;
 	}
 	io = &hdmi_ctrl->pdata.io[HDMI_TX_CORE_IO];
-	DEV_DBG("%s: Got HPD interrupt\n", __func__);
+	DEV_DBG("%s: Got HPD %s interrupt\n", __func__,
+		hdmi_ctrl->hpd_state ? "connect" : "disconnect");
 
 	if (hdmi_ctrl->hpd_state) {
 		/*
@@ -2848,6 +2849,8 @@ static void hdmi_tx_hpd_off(struct hdmi_tx_ctrl *hdmi_ctrl)
 	spin_unlock_irqrestore(&hdmi_ctrl->hpd_state_lock, flags);
 
 	hdmi_ctrl->hpd_initialized = false;
+
+	DEV_DBG("%s\n", __func__);
 } /* hdmi_tx_hpd_off */
 
 static int hdmi_tx_hpd_on(struct hdmi_tx_ctrl *hdmi_ctrl)
@@ -2879,7 +2882,7 @@ static int hdmi_tx_hpd_on(struct hdmi_tx_ctrl *hdmi_ctrl)
 
 		dss_reg_dump(io->base, io->len, "HDMI-INIT: ", REG_DUMP);
 
-		if (!hdmi_ctrl->panel_data.panel_info.cont_splash_enabled) {
+		if (!hdmi_ctrl->pdata.primary) {
 			hdmi_tx_set_mode(hdmi_ctrl, false);
 			hdmi_tx_phy_reset(hdmi_ctrl);
 			hdmi_tx_set_mode(hdmi_ctrl, true);
@@ -2903,6 +2906,8 @@ static int hdmi_tx_hpd_on(struct hdmi_tx_ctrl *hdmi_ctrl)
 
 		hdmi_tx_hpd_polarity_setup(hdmi_ctrl, HPD_CONNECT_POLARITY);
 	}
+
+	DEV_DBG("%s\n", __func__);
 
 	return rc;
 } /* hdmi_tx_hpd_on */
