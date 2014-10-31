@@ -1325,7 +1325,7 @@ int __read_mostly sysctl_sched_upmigrate_min_nice = 15;
  * preference. If set, the scheduler chooses to wake up a task
  * on an idle CPU.
  */
-unsigned int __read_mostly sysctl_sched_prefer_idle;
+unsigned int __read_mostly sysctl_sched_prefer_idle = 1;
 
 /*
  * Scheduler boost is a mechanism to temporarily place tasks on CPUs
