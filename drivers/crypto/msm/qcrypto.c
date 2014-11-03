@@ -28,7 +28,6 @@
 #include <linux/sched.h>
 #include <linux/init.h>
 #include <linux/cache.h>
-#include <soc/qcom/scm.h>
 
 #include <crypto/ctr.h>
 #include <crypto/des.h>
@@ -164,7 +163,6 @@ struct crypto_priv {
 	/* current active request */
 	struct crypto_async_request *req;
 
-	uint32_t ce_lock_count;
 	struct work_struct unlock_ce_ws;
 	struct list_head engine_list; /* list of  qcrypto engines */
 	int32_t total_units;   /* total units of engines */
@@ -180,35 +178,6 @@ struct crypto_priv {
 static struct crypto_priv qcrypto_dev;
 static struct crypto_engine *_qcrypto_static_assign_engine(
 					struct crypto_priv *cp);
-
-/*-------------------------------------------------------------------------
-* Resource Locking Service
-* ------------------------------------------------------------------------*/
-#define QCRYPTO_CMD_ID				1
-#define QCRYPTO_CE_LOCK_CMD			1
-#define QCRYPTO_CE_UNLOCK_CMD			0
-#define NUM_RETRY				1000
-#define CE_BUSY				        55
-
-static int qcrypto_scm_cmd(int resource, int cmd, int *response)
-{
-#ifdef CONFIG_MSM_SCM
-
-	struct {
-		int resource;
-		int cmd;
-	} cmd_buf;
-
-	cmd_buf.resource = resource;
-	cmd_buf.cmd = cmd;
-
-	return scm_call(SCM_SVC_TZ, QCRYPTO_CMD_ID, &cmd_buf,
-		sizeof(cmd_buf), response, sizeof(*response));
-
-#else
-	return 0;
-#endif
-}
 
 static struct crypto_engine *_qrypto_find_pengine_device(struct crypto_priv *cp,
 			 unsigned int device)
@@ -289,49 +258,6 @@ void qcrypto_get_engine_list(size_t num_engines,
 	}
 }
 EXPORT_SYMBOL(qcrypto_get_engine_list);
-
-static void qcrypto_unlock_ce(struct work_struct *work)
-{
-	int response = 0;
-	unsigned long flags;
-	struct crypto_priv *cp = container_of(work, struct crypto_priv,
-							unlock_ce_ws);
-	if (cp->ce_lock_count == 1)
-		BUG_ON(qcrypto_scm_cmd(cp->platform_support.shared_ce_resource,
-				QCRYPTO_CE_UNLOCK_CMD, &response) != 0);
-	spin_lock_irqsave(&cp->lock, flags);
-	cp->ce_lock_count--;
-	spin_unlock_irqrestore(&cp->lock, flags);
-}
-
-static int qcrypto_lock_ce(struct crypto_priv *cp)
-{
-	unsigned long flags;
-	int response = -CE_BUSY;
-	int i = 0;
-
-	if (cp->ce_lock_count == 0) {
-		do {
-			if (qcrypto_scm_cmd(
-				cp->platform_support.shared_ce_resource,
-				QCRYPTO_CE_LOCK_CMD, &response)) {
-				response = -EINVAL;
-				break;
-			}
-		} while ((response == -CE_BUSY) && (i++ < NUM_RETRY));
-
-		if ((response == -CE_BUSY) && (i >= NUM_RETRY))
-			return -EUSERS;
-		if (response < 0)
-			return -EINVAL;
-	}
-	spin_lock_irqsave(&cp->lock, flags);
-	cp->ce_lock_count++;
-	spin_unlock_irqrestore(&cp->lock, flags);
-
-
-	return 0;
-}
 
 enum qcrypto_alg_type {
 	QCRYPTO_ALG_CIPHER	= 0,
@@ -1439,8 +1365,6 @@ static void _qce_ahash_complete(void *cookie, unsigned char *digest,
 		kzfree(rctx->data);
 	}
 
-	if (cp->platform_support.ce_shared)
-		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&pengine->done_tasklet);
 };
 
@@ -1491,8 +1415,6 @@ static void _qce_ablk_cipher_complete(void *cookie, unsigned char *icb,
 		kzfree(rctx->data);
 	}
 
-	if (cp->platform_support.ce_shared)
-		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&pengine->done_tasklet);
 };
 
@@ -1608,8 +1530,6 @@ static void _qce_aead_complete(void *cookie, unsigned char *icv,
 
 	pengine->res = ret;
 
-	if (cp->platform_support.ce_shared)
-		schedule_work(&cp->unlock_ce_ws);
 	tasklet_schedule(&pengine->done_tasklet);
 }
 
@@ -2196,12 +2116,6 @@ static int _qcrypto_queue_req(struct crypto_priv *cp,
 {
 	int ret;
 	unsigned long flags;
-
-	if (cp->platform_support.ce_shared) {
-		ret = qcrypto_lock_ce(cp);
-		if (ret)
-			return ret;
-	}
 
 	spin_lock_irqsave(&cp->lock, flags);
 
@@ -5197,11 +5111,9 @@ static int __init _qcrypto_init(void)
 		return rc;
 	INIT_LIST_HEAD(&pcp->alg_list);
 	INIT_LIST_HEAD(&pcp->engine_list);
-	INIT_WORK(&pcp->unlock_ce_ws, qcrypto_unlock_ce);
 	spin_lock_init(&pcp->lock);
 	mutex_init(&pcp->engine_lock);
 	pcp->total_units = 0;
-	pcp->ce_lock_count = 0;
 	pcp->platform_support.bus_scale_table = NULL;
 	pcp->next_engine = NULL;
 	crypto_init_queue(&pcp->req_queue, MSM_QCRYPTO_REQ_QUEUE_LENGTH);
