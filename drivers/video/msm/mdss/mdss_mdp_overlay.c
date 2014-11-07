@@ -670,7 +670,8 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		pipe = mdss_mdp_pipe_alloc(mixer, pipe_type, left_blend_pipe);
 
 		/* RGB pipes can be used instead of DMA */
-		if (!pipe && (pipe_type == MDSS_MDP_PIPE_TYPE_DMA)) {
+		if (IS_ERR_OR_NULL(pipe) &&
+		    (pipe_type == MDSS_MDP_PIPE_TYPE_DMA)) {
 			pr_debug("giving RGB pipe for fb%d. flags:0x%x\n",
 				mfd->index, req->flags);
 			pipe_type = MDSS_MDP_PIPE_TYPE_RGB;
@@ -679,7 +680,8 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 		}
 
 		/* VIG pipes can also support RGB format */
-		if (!pipe && pipe_type == MDSS_MDP_PIPE_TYPE_RGB) {
+		if (IS_ERR_OR_NULL(pipe) &&
+		    pipe_type == MDSS_MDP_PIPE_TYPE_RGB) {
 			pr_debug("giving ViG pipe for fb%d. flags:0x%x\n",
 				mfd->index, req->flags);
 			pipe_type = MDSS_MDP_PIPE_TYPE_VIG;
@@ -687,7 +689,9 @@ int mdss_mdp_overlay_pipe_setup(struct msm_fb_data_type *mfd,
 				left_blend_pipe);
 		}
 
-		if (pipe == NULL) {
+		if (IS_ERR(pipe)) {
+			return PTR_ERR(pipe);
+		} else if (!pipe) {
 			pr_err_ratelimited("error allocating pipe. flags=0x%x\n",
 				req->flags);
 			return -ENODEV;
