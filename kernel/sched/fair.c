@@ -1873,6 +1873,7 @@ static int best_small_task_cpu(struct task_struct *p, int sync)
 
 		trace_sched_cpu_load(rq, idle_cpu(i),
 			  mostly_idle_cpu_sync(i, cpu_load_sync(i, sync), sync),
+			  sched_irqload(i),
 			  power_cost_task(p, i));
 
 		if (power_cost_task(p, i) == cluster_cost) {
@@ -2098,6 +2099,7 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 				     mostly_idle_cpu_sync(i,
 							 cpu_load_sync(i, sync),
 							 sync),
+				     sched_irqload(i),
 				     power_cost(tload, i));
 		if (!task_load_will_fit(p, tload, i)) {
 			for_each_cpu_and(j, &search_cpus,
@@ -6238,6 +6240,7 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 
 		trace_sched_cpu_load(cpu_rq(i), idle_cpu(i),
 				     mostly_idle_cpu(i),
+				     sched_irqload(i),
 				     power_cost_at_freq(i, 0));
 		nr_running = rq->nr_running;
 
