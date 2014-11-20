@@ -1130,9 +1130,7 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_core *core = NULL;
 	struct sys_err_handler_data *handler = NULL;
-	struct hfi_device *hdev = NULL;
 	struct msm_vidc_inst *inst = NULL;
-	int rc = 0;
 
 	subsystem_crashed("venus");
 	if (!response) {
@@ -1159,19 +1157,6 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	list_for_each_entry(inst, &core->instances, list) {
 		mutex_lock(&inst->lock);
 		inst->state = MSM_VIDC_CORE_INVALID;
-		if (inst->core)
-			hdev = inst->core->device;
-		if (hdev && inst->session) {
-			dprintk(VIDC_DBG,
-			"cleaning up inst: 0x%p\n", inst);
-			rc = call_hfi_op(hdev, session_clean,
-				(void *) inst->session);
-			if (rc)
-				dprintk(VIDC_ERR,
-					"Sess clean failed :%p\n",
-					inst);
-		}
-		inst->session = NULL;
 		mutex_unlock(&inst->lock);
 		msm_vidc_queue_v4l2_event(inst,
 				V4L2_EVENT_MSM_VIDC_SYS_ERROR);
@@ -1198,11 +1183,35 @@ static void handle_sys_error(enum command_response cmd, void *data)
 	schedule_delayed_work(&handler->work, msecs_to_jiffies(5000));
 }
 
+void msm_comm_session_clean(struct msm_vidc_inst *inst)
+{
+	int rc = 0;
+	struct hfi_device *hdev = NULL;
+
+	if (!inst || !inst->core || !inst->core->device) {
+		dprintk(VIDC_ERR, "%s invalid params\n", __func__);
+		return;
+	}
+
+	hdev = inst->core->device;
+	mutex_lock(&inst->lock);
+	if (hdev && inst->session) {
+		dprintk(VIDC_DBG, "cleaning up instance: 0x%p\n", inst);
+		rc = call_hfi_op(hdev, session_clean,
+				(void *) inst->session);
+		if (rc) {
+			dprintk(VIDC_ERR,
+				"Session clean failed :%p\n", inst);
+		}
+		inst->session = NULL;
+	}
+	mutex_unlock(&inst->lock);
+}
+
 static void handle_session_close(enum command_response cmd, void *data)
 {
 	struct msm_vidc_cb_cmd_done *response = data;
 	struct msm_vidc_inst *inst;
-	struct hfi_device *hdev = NULL;
 
 	if (response) {
 		inst = (struct msm_vidc_inst *)response->session_id;
@@ -1210,15 +1219,7 @@ static void handle_session_close(enum command_response cmd, void *data)
 			dprintk(VIDC_ERR, "%s invalid params\n", __func__);
 			return;
 		}
-		hdev = inst->core->device;
-		mutex_lock(&inst->lock);
-		if (inst->session) {
-			dprintk(VIDC_DBG, "cleaning up inst: 0x%p\n", inst);
-			call_hfi_op(hdev, session_clean,
-				(void *) inst->session);
-		}
-		inst->session = NULL;
-		mutex_unlock(&inst->lock);
+		msm_comm_session_clean(inst);
 		signal_session_msg_receipt(cmd, inst);
 		show_stats(inst);
 	} else {
