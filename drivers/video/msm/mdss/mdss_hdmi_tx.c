@@ -3944,9 +3944,8 @@ static int hdmi_tx_get_dt_data(struct platform_device *pdev,
 	 splash_en = of_property_read_bool(pdev->dev.of_node,
 			"qcom,cont_splash_enabled");
 
-	/* cont splash screen is supported only for hdmi primary */
-	pdata->cont_splash_enabled =
-		hdmi_ctrl->pdata.primary ? splash_en : false;
+	if (splash_en)
+		pdata->cont_splash_enabled = true;
 
 	return rc;
 
@@ -4051,6 +4050,7 @@ static int hdmi_tx_probe(struct platform_device *pdev)
 			vic = DEFAULT_HDMI_PRIMARY_RESOLUTION;
 
 		hdmi_ctrl->pdata.primary = true;
+		hdmi_ctrl->pdata.cont_splash_enabled = true;
 		hdmi_ctrl->video_resolution = vic;
 	}
 
