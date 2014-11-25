@@ -1278,7 +1278,7 @@ void __init apq8084_init_gpiomux(void)
 	} else {
 		msm_gpiomux_install(apq8084_hsic_configs,
 			ARRAY_SIZE(apq8084_hsic_configs));
-		msm_gpiomux_install(msm_hdmi_configs,
+		msm_gpiomux_install_nowrite(msm_hdmi_configs,
 			ARRAY_SIZE(msm_hdmi_configs));
 		msm_gpiomux_install(hap_lvl_shft_config,
 			ARRAY_SIZE(hap_lvl_shft_config));
@@ -1292,7 +1292,7 @@ void __init apq8084_init_gpiomux(void)
 		msm_gpiomux_install(msm_sbc_sensor_configs,
 				ARRAY_SIZE(msm_sbc_sensor_configs));
 	else
-		msm_gpiomux_install(msm_sensor_configs,
+		msm_gpiomux_install_nowrite(msm_sensor_configs,
 				ARRAY_SIZE(msm_sensor_configs));
 	msm_gpiomux_install(msm_pcie_configs, ARRAY_SIZE(msm_pcie_configs));
 	msm_gpiomux_install(msm_epm_configs, ARRAY_SIZE(msm_epm_configs));

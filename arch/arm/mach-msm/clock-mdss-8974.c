@@ -2810,6 +2810,7 @@ static struct clk_ops hdmi_mux_ops;
 static int hdmi_mux_prepare(struct clk *c)
 {
 	int ret = 0;
+	ret = clk_prepare(mdss_ahb_clk);
 
 	if (c && c->ops && c->ops->set_rate)
 		ret = c->ops->set_rate(c, c->rate);
