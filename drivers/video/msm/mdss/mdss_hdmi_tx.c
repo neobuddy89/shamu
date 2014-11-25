@@ -1895,6 +1895,27 @@ exit:
 	return rc;
 } /* hdmi_tx_config_power */
 
+static int hdmi_tx_vote_power(struct hdmi_tx_ctrl *hdmi_ctrl,
+	enum hdmi_tx_power_module_type module)
+{
+	struct dss_module_power *power_data = NULL;
+
+	if (!hdmi_ctrl || module >= HDMI_TX_MAX_PM) {
+		DEV_ERR("%s: Error: invalid input\n", __func__);
+		return -EINVAL;
+	}
+
+	power_data = &hdmi_ctrl->pdata.power_data[module];
+	if (!power_data) {
+		DEV_ERR("%s: Error: invalid power data\n", __func__);
+		return -EINVAL;
+	}
+
+	power_data->enable = true;
+
+	return 0;
+}
+
 static int hdmi_tx_enable_power(struct hdmi_tx_ctrl *hdmi_ctrl,
 	enum hdmi_tx_power_module_type module, int enable)
 {
@@ -4098,6 +4119,8 @@ static int hdmi_tx_probe(struct platform_device *pdev)
 			msm_dss_enable_clk(
 				hdmi_ctrl->pdata.power_data[i].clk_config,
 				hdmi_ctrl->pdata.power_data[i].num_clk, 1);
+
+			hdmi_tx_vote_power(hdmi_ctrl, i);
 		}
 
 		hdmi_tx_audio_tear_down(hdmi_ctrl);
