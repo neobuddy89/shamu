@@ -3201,6 +3201,9 @@ static int hdmi_tx_panel_event_handler(struct mdss_panel_data *panel_data,
 				return rc;
 			} else {
 				hdmi_ctrl->hpd_feature_on = true;
+				hdmi_tx_send_cable_notification(hdmi_ctrl,
+					true);
+				hdmi_ctrl->hpd_state = true;
 			}
 		}
 
