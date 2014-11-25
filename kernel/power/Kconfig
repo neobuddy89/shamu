@@ -306,3 +306,8 @@ config PARTIALRESUME
 	  partial-resume handlers associated with them, and they all return
 	  true.
 
+config PM_SYNC_BEFORE_SUSPEND
+	bool "Sync file systems before suspend"
+	depends on PM
+	default y
+
