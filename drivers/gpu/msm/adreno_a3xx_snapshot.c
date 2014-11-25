@@ -496,15 +496,24 @@ void *a3xx_snapshot(struct adreno_device *adreno_dev, void *snapshot,
 		KGSL_SNAPSHOT_SECTION_REGS, snapshot, remain,
 		kgsl_snapshot_dump_regs, &list);
 
-	snapshot = kgsl_snapshot_indexed_registers(device, snapshot,
+	/* Skip indexed register dump for these chipsets 8974, 8x26, 8x10 */
+	if (adreno_is_a330(adreno_dev) ||
+		adreno_is_a330v2(adreno_dev) ||
+		adreno_is_a305b(adreno_dev) ||
+		adreno_is_a305c(adreno_dev)	) {
+		KGSL_DRV_ERR(device,
+		"Skipping indexed register dump\n");
+	} else {
+		snapshot = kgsl_snapshot_indexed_registers(device, snapshot,
 			remain, A3XX_CP_STATE_DEBUG_INDEX,
 			A3XX_CP_STATE_DEBUG_DATA, 0x0,
 			snap_data->sect_sizes->cp_state_deb);
 
-	/* CP_ME indexed registers */
-	snapshot = kgsl_snapshot_indexed_registers(device, snapshot,
+		/* CP_ME indexed registers */
+		snapshot = kgsl_snapshot_indexed_registers(device, snapshot,
 			remain, A3XX_CP_ME_CNTL, A3XX_CP_ME_STATUS,
 			64, 44);
+	}
 
 	/* VPC memory */
 	snapshot = kgsl_snapshot_add_section(device,
