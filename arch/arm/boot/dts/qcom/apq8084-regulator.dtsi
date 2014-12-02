@@ -125,7 +125,7 @@
         rpm-regulator-smpa6 {
 		status = "okay";
 		pma8084_s6: regulator-s6 {
-                        regulator-min-microvolt = <815000>;
+                        regulator-min-microvolt = <700000>;
                         regulator-max-microvolt = <900000>;
                         status = "okay";
                 };
