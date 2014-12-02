@@ -654,6 +654,10 @@ static unsigned int a4xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 				A4XX_RBBM_PERFCTR_LOAD_VALUE_LO),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_HI,
 				A4XX_RBBM_PERFCTR_LOAD_VALUE_HI),
+	ADRENO_REG_DEFINE(ADRENO_REG_VBIF_XIN_HALT_CTRL0,
+				A4XX_VBIF_XIN_HALT_CTRL0),
+	ADRENO_REG_DEFINE(ADRENO_REG_VBIF_XIN_HALT_CTRL1,
+				A4XX_VBIF_XIN_HALT_CTRL1),
 };
 
 const struct adreno_reg_offsets a4xx_reg_offsets = {
@@ -1218,6 +1222,7 @@ struct adreno_gpudev adreno_a4xx_gpudev = {
 	.perfcounters = &a4xx_perfcounters,
 	.irq = &a4xx_irq,
 	.snapshot_data = &a4xx_snapshot_data,
+	.vbif_xin_halt_ctrl0_mask = A4XX_VBIF_XIN_HALT_CTRL0_MASK,
 
 	.perfcounter_init = a3xx_perfcounter_init,
 	.perfcounter_close = a3xx_perfcounter_close,

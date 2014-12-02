@@ -1330,6 +1330,8 @@ adreno_identify_gpu(struct adreno_device *adreno_dev)
 						ADRENO_REG_UNUSED;
 		}
 	}
+	if (adreno_dev->gpudev->gpudev_init)
+		adreno_dev->gpudev->gpudev_init(adreno_dev);
 }
 
 static struct platform_device_id adreno_id_table[] = {
@@ -1965,6 +1967,34 @@ static int adreno_start(struct kgsl_device *device, int priority)
 	return ret;
 }
 
+/**
+ * adreno_vbif_clear_pending_transactions() - Clear transactions in VBIF pipe
+ * @device: Pointer to the device whose VBIF pipe is to be cleared
+ */
+static void adreno_vbif_clear_pending_transactions(struct kgsl_device *device)
+{
+	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
+	unsigned int mask = adreno_dev->gpudev->vbif_xin_halt_ctrl0_mask;
+	unsigned int val;
+	unsigned long wait_for_vbif;
+
+	adreno_writereg(adreno_dev, ADRENO_REG_VBIF_XIN_HALT_CTRL0, mask);
+	/* wait for the transactions to clear */
+	wait_for_vbif = jiffies + msecs_to_jiffies(100);
+	while (1) {
+		adreno_readreg(adreno_dev,
+			ADRENO_REG_VBIF_XIN_HALT_CTRL1, &val);
+		if ((val & mask) == mask)
+			break;
+		if (time_after(jiffies, wait_for_vbif)) {
+			KGSL_DRV_ERR(device,
+				"Wait limit reached for VBIF XIN Halt\n");
+			break;
+		}
+	}
+	adreno_writereg(adreno_dev, ADRENO_REG_VBIF_XIN_HALT_CTRL0, 0);
+}
+
 static int adreno_stop(struct kgsl_device *device)
 {
 	struct adreno_device *adreno_dev = ADRENO_DEVICE(device);
@@ -2014,6 +2044,9 @@ int adreno_reset(struct kgsl_device *device)
 	int ret = -EINVAL;
 	struct kgsl_mmu *mmu = &device->mmu;
 	int i = 0;
+
+	/* clear pending vbif transactions before reset */
+	adreno_vbif_clear_pending_transactions(device);
 
 	/* Try soft reset first, for non mmu fault case only */
 	if (!atomic_read(&mmu->fault)) {

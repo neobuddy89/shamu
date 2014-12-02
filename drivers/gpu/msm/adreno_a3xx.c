@@ -666,6 +666,27 @@ int adreno_a3xx_pwron_fixup_init(struct adreno_device *adreno_dev)
 	return 0;
 }
 
+ /*
+ * a3xx_gpudev_init() - Initialize gpudev specific fields
+ * @adreno_dev: Pointer to adreno device
+ */
+void a3xx_gpudev_init(struct adreno_device *adreno_dev)
+{
+	struct adreno_gpudev *gpudev;
+	const struct adreno_reg_offsets *reg_offsets;
+
+	if (adreno_is_a306(adreno_dev)) {
+		gpudev = adreno_dev->gpudev;
+		reg_offsets = gpudev->reg_offsets;
+		reg_offsets->offsets[ADRENO_REG_VBIF_XIN_HALT_CTRL0] =
+			A3XX_VBIF2_XIN_HALT_CTRL0;
+		reg_offsets->offsets[ADRENO_REG_VBIF_XIN_HALT_CTRL1] =
+			A3XX_VBIF2_XIN_HALT_CTRL1;
+		gpudev->vbif_xin_halt_ctrl0_mask =
+				A3XX_VBIF2_XIN_HALT_CTRL0_MASK;
+	}
+}
+
 /*
  * a3xx_rb_init() - Initialize ringbuffer
  * @adreno_dev: Pointer to adreno device
@@ -2288,6 +2309,10 @@ static unsigned int a3xx_register_offsets[ADRENO_REG_REGISTER_MAX] = {
 				A3XX_RBBM_PERFCTR_LOAD_VALUE_LO),
 	ADRENO_REG_DEFINE(ADRENO_REG_RBBM_PERFCTR_LOAD_VALUE_HI,
 				A3XX_RBBM_PERFCTR_LOAD_VALUE_HI),
+	ADRENO_REG_DEFINE(ADRENO_REG_VBIF_XIN_HALT_CTRL0,
+				A3XX_VBIF_XIN_HALT_CTRL0),
+	ADRENO_REG_DEFINE(ADRENO_REG_VBIF_XIN_HALT_CTRL1,
+				A3XX_VBIF_XIN_HALT_CTRL1),
 };
 
 const struct adreno_reg_offsets a3xx_reg_offsets = {
@@ -2317,7 +2342,9 @@ struct adreno_gpudev adreno_a3xx_gpudev = {
 	.perfcounters = &a3xx_perfcounters,
 	.irq = &a3xx_irq,
 	.snapshot_data = &a3xx_snapshot_data,
+	.vbif_xin_halt_ctrl0_mask = A3XX_VBIF_XIN_HALT_CTRL0_MASK,
 
+	.gpudev_init = a3xx_gpudev_init,
 	.rb_init = a3xx_rb_init,
 	.perfcounter_init = a3xx_perfcounter_init,
 	.perfcounter_close = a3xx_perfcounter_close,
