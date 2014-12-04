@@ -2499,19 +2499,19 @@ static int venus_hfi_session_abort(void *session)
 static int venus_hfi_session_clean(void *session)
 {
 	struct hal_session *sess_close;
+	struct venus_hfi_device *device;
 	if (!session) {
 		dprintk(VIDC_ERR, "Invalid Params %s\n", __func__);
 		return -EINVAL;
 	}
 	sess_close = session;
+	device = sess_close->device;
 	dprintk(VIDC_DBG, "deleted the session: 0x%p\n",
 			sess_close);
-	mutex_lock(&((struct venus_hfi_device *)
-			sess_close->device)->session_lock);
+	mutex_lock(&device->session_lock);
 	list_del(&sess_close->list);
-	mutex_unlock(&((struct venus_hfi_device *)
-			sess_close->device)->session_lock);
 	kfree(sess_close);
+	mutex_unlock(&device->session_lock);
 	return 0;
 }
 
