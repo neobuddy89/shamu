@@ -7733,6 +7733,10 @@ int tomtom_enable_qfuse_sensing(struct snd_soc_codec *codec)
 }
 EXPORT_SYMBOL(tomtom_enable_qfuse_sensing);
 
+static const struct wcd9xxx_resmgr_cb resmgr_cb = {
+	.cdc_rco_ctrl = tomtom_codec_internal_rco_ctrl,
+};
+
 static int tomtom_codec_probe(struct snd_soc_codec *codec)
 {
 	struct wcd9xxx *control;
@@ -7775,7 +7779,7 @@ static int tomtom_codec_probe(struct snd_soc_codec *codec)
 	pdata = dev_get_platdata(codec->dev->parent);
 	ret = wcd9xxx_resmgr_init(&tomtom->resmgr, codec, core_res, pdata,
 				  &pdata->micbias, &tomtom_reg_address,
-				  WCD9XXX_CDC_TYPE_TOMTOM);
+				  &resmgr_cb, WCD9XXX_CDC_TYPE_TOMTOM);
 	if (ret) {
 		pr_err("%s: wcd9xxx init failed %d\n", __func__, ret);
 		goto err_nomem_slimch;
