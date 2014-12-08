@@ -367,6 +367,9 @@ int pstore_mkfile(enum pstore_type_id type, char *psname, u64 id, int count,
 	case PSTORE_TYPE_ANNOTATE:
 		scnprintf(name, PSTORE_NAMELEN, "annotate-%s", psname);
 		break;
+	case PSTORE_TYPE_PMSG:
+		scnprintf(name, PSTORE_NAMELEN, "pmsg-%s-%lld", psname, id);
+		break;
 	case PSTORE_TYPE_UNKNOWN:
 		scnprintf(name, PSTORE_NAMELEN, "unknown-%s-%lld", psname, id);
 		break;
