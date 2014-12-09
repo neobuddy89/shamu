@@ -848,16 +848,6 @@ struct ion_client *ion_client_create(struct ion_device *dev,
 	rb_link_node(&client->node, parent, p);
 	rb_insert_color(&client->node, &dev->clients);
 
-	client->debug_root = debugfs_create_file(client->display_name, 0664,
-						dev->clients_debug_root,
-						client, &debug_client_fops);
-	if (!client->debug_root) {
-		char buf[256], *path;
-		path = dentry_path(dev->clients_debug_root, buf, 256);
-		pr_err("Failed to create client debugfs at %s/%s\n",
-			path, client->display_name);
-	}
-
 	up_write(&dev->lock);
 
 	return client;
