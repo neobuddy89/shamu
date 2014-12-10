@@ -2094,9 +2094,14 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 		/*
 		 * Partition CPUs based on whether they are completely idle
 		 * or not. For completely idle CPUs we choose the one in
-		 * the lowest C-state and then break ties with power cost
+		 * the lowest C-state and then break ties with power cost.
+		 *
+		 * For sync wakeups we only consider the waker CPU as idle if
+		 * prefer_idle is set. Otherwise if prefer_idle is unset sync
+		 * wakeups will get biased away from the waker CPU.
 		 */
-		if (idle_cpu(i)) {
+		if (idle_cpu(i) || (sync && i == smp_processor_id()
+			&& prefer_idle && cpu_rq(i)->nr_running == 1)) {
 			cstate = cpu_rq(i)->cstate;
 			if (cstate > min_cstate)
 				continue;
