@@ -2192,8 +2192,9 @@ static int venus_hfi_core_release(void *device)
 				"%s: Power enable failed\n", __func__);
 			return -EIO;
 		}
-
+		mutex_lock(&dev->resource_lock);
 		rc = __unset_free_ocmem(dev);
+		mutex_unlock(&dev->resource_lock);
 		if (rc)
 			dprintk(VIDC_ERR,
 					"Failed to unset and free OCMEM in core release, rc : %d\n",
@@ -2931,7 +2932,9 @@ static void venus_hfi_pm_hndlr(struct work_struct *work)
 
 	dprintk(VIDC_DBG, "Prepare for power collapse\n");
 
+	mutex_lock(&device->resource_lock);
 	rc = __unset_free_ocmem(device);
+	mutex_unlock(&device->resource_lock);
 	if (rc) {
 		dprintk(VIDC_ERR,
 			"Failed to unset and free OCMEM for PC, rc : %d\n", rc);
@@ -3993,6 +3996,7 @@ static void *venus_hfi_add_device(u32 device_id,
 	mutex_init(&hdevice->read_lock);
 	mutex_init(&hdevice->write_lock);
 	mutex_init(&hdevice->session_lock);
+	mutex_init(&hdevice->resource_lock);
 
 	if (hal_ctxt.dev_count == 0)
 		INIT_LIST_HEAD(&hal_ctxt.dev_head);
