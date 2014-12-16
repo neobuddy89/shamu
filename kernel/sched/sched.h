@@ -778,11 +778,6 @@ extern void sched_account_irqtime(int cpu, struct task_struct *curr,
 unsigned int cpu_temp(int cpu);
 extern unsigned int nr_eligible_big_tasks(int cpu);
 
-static inline int capacity(struct rq *rq)
-{
-	return rq->capacity;
-}
-
 /*
  * 'load' is in reference to "best cpu" at its best frequency.
  * Scale that in reference to a given cpu, accounting for how bad it is
@@ -796,6 +791,11 @@ static inline u64 scale_load_to_cpu(u64 task_load, int cpu)
 	task_load /= 1024;
 
 	return task_load;
+}
+
+static inline int capacity(struct rq *rq)
+{
+	return rq->capacity;
 }
 
 static inline void
@@ -843,7 +843,12 @@ static inline u64 sched_irqload(int cpu)
 	s64 delta;
 
 	delta = get_jiffies_64() - rq->irqload_ts;
-	BUG_ON(delta < 0);
+	/*
+	 * Current context can be preempted by irq and rq->irqload_ts can be
+	 * updated by irq context so that delta can be negative.
+	 * But this is okay and we can safely return as this means there
+	 * was recent irq occurrence.
+	 */
 
 	if (delta < SCHED_HIGH_IRQ_TIMEOUT)
 		return rq->avg_irqload;
