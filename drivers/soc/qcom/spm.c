@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -114,7 +114,7 @@ static uint32_t num_pmic_data;
 static void msm_spm_drv_flush_shadow(struct msm_spm_driver_data *dev,
 		unsigned int reg_index)
 {
-	__raw_writel(dev->reg_shadow[reg_index],
+	spm_raw_write(dev->reg_shadow[reg_index],
 		dev->reg_base_addr + dev->reg_offsets[reg_index]);
 }
 
@@ -231,7 +231,6 @@ inline int msm_spm_drv_set_spm_enable(
 		dev->reg_shadow[MSM_SPM_REG_SAW2_SPM_CTL] |= value;
 
 		msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_SPM_CTL);
-		wmb();
 	}
 	return 0;
 }
@@ -246,12 +245,11 @@ void msm_spm_drv_flush_seq_entry(struct msm_spm_driver_data *dev)
 	}
 
 	for (i = 0; i < num_spm_entry; i++) {
-		__raw_writel(dev->reg_seq_entry_shadow[i],
+		spm_raw_write(dev->reg_seq_entry_shadow[i],
 			dev->reg_base_addr
 			+ dev->reg_offsets[MSM_SPM_REG_SAW2_SEQ_ENTRY]
 			+ 4 * i);
 	}
-	mb();
 }
 
 void dump_regs(struct msm_spm_driver_data *dev, int cpu)
@@ -310,7 +308,6 @@ int msm_spm_drv_set_low_power_mode(struct msm_spm_driver_data *dev,
 	msm_spm_drv_set_start_addr(dev, addr, pc_mode);
 
 	msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_SPM_CTL);
-	wmb();
 
 	if (msm_spm_debug_mask & MSM_SPM_DEBUG_SHADOW) {
 		int i;
@@ -468,7 +465,6 @@ int msm_spm_drv_set_pmic_data(struct msm_spm_driver_data *dev,
 	dev->reg_shadow[MSM_SPM_REG_SAW2_VCTL] &= ~0x700FF;
 	dev->reg_shadow[MSM_SPM_REG_SAW2_VCTL] |= pmic_data;
 	msm_spm_drv_flush_shadow(dev, MSM_SPM_REG_SAW2_VCTL);
-	mb();
 
 	timeout_us = dev->vctl_timeout_us;
 	/**
@@ -502,7 +498,6 @@ void msm_spm_drv_reinit(struct msm_spm_driver_data *dev)
 		msm_spm_drv_flush_shadow(dev, i);
 
 	msm_spm_drv_flush_seq_entry(dev);
-	mb();
 }
 
 int msm_spm_drv_init(struct msm_spm_driver_data *dev,
@@ -545,11 +540,6 @@ int msm_spm_drv_init(struct msm_spm_driver_data *dev,
 
 	for (i = 0; i < MSM_SPM_REG_SAW2_PMIC_DATA_0 + num_pmic_data; i++)
 		msm_spm_drv_flush_shadow(dev, i);
-
-	/* barrier to ensure write completes before we update shadow
-	 * registers
-	 */
-	mb();
 
 	for (i = 0; i < MSM_SPM_REG_SAW2_PMIC_DATA_0 + num_pmic_data; i++)
 		msm_spm_drv_load_shadow(dev, i);
