@@ -2409,6 +2409,25 @@ static void venus_hfi_set_default_sys_properties(
 		dprintk(VIDC_WARN, "Setting h/w power collapse ON failed\n");
 }
 
+static int venus_hfi_session_clean(void *session)
+{
+	struct hal_session *sess_close;
+	struct venus_hfi_device *device;
+	if (!session) {
+		dprintk(VIDC_ERR, "Invalid Params %s\n", __func__);
+		return -EINVAL;
+	}
+	sess_close = session;
+	device = sess_close->device;
+	dprintk(VIDC_DBG, "deleted the session: 0x%p\n",
+			sess_close);
+	mutex_lock(&device->session_lock);
+	list_del(&sess_close->list);
+	kfree(sess_close);
+	mutex_unlock(&device->session_lock);
+	return 0;
+}
+
 static void *venus_hfi_session_init(void *device, u32 session_id,
 		enum hal_domain session_type, enum hal_video_codec codec_type)
 {
@@ -2453,7 +2472,7 @@ static void *venus_hfi_session_init(void *device, u32 session_id,
 	return (void *) new_session;
 
 err_session_init_fail:
-	kfree(new_session);
+	venus_hfi_session_clean(new_session);
 	return NULL;
 }
 
@@ -2494,25 +2513,6 @@ static int venus_hfi_session_abort(void *session)
 {
 	return venus_hfi_send_session_cmd(session,
 		HFI_CMD_SYS_SESSION_ABORT);
-}
-
-static int venus_hfi_session_clean(void *session)
-{
-	struct hal_session *sess_close;
-	struct venus_hfi_device *device;
-	if (!session) {
-		dprintk(VIDC_ERR, "Invalid Params %s\n", __func__);
-		return -EINVAL;
-	}
-	sess_close = session;
-	device = sess_close->device;
-	dprintk(VIDC_DBG, "deleted the session: 0x%p\n",
-			sess_close);
-	mutex_lock(&device->session_lock);
-	list_del(&sess_close->list);
-	kfree(sess_close);
-	mutex_unlock(&device->session_lock);
-	return 0;
 }
 
 static int venus_hfi_session_set_buffers(void *sess,

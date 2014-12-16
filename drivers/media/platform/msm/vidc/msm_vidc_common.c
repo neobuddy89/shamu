@@ -2342,6 +2342,7 @@ static int msm_comm_session_init(int flipped_state,
 			"Failed to call session init for: %d, %d, %d, %d\n",
 			(int)inst->core->device, (int)inst,
 			inst->session_type, fourcc);
+		rc = -EINVAL;
 		goto exit;
 	}
 	inst->ftb_count = 0;
