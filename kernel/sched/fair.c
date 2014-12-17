@@ -1983,6 +1983,20 @@ static int select_packing_target(struct task_struct *p, int best_cpu)
 	return target;
 }
 
+/*
+ * Should task be woken to any available idle cpu?
+ *
+ * Waking tasks to idle cpu has mixed implications on both performance and
+ * power. In many cases, scheduler can't estimate correctly impact of using idle
+ * cpus on either performance or power. PF_WAKE_UP_IDLE allows external kernel
+ * module to pass a strong hint to scheduler that the task in question should be
+ * woken to idle cpu, generally to improve performance.
+ */
+static inline int wake_to_idle(struct task_struct *p)
+{
+	return (current->flags & PF_WAKE_UP_IDLE) ||
+			 (p->flags & PF_WAKE_UP_IDLE);
+}
 
 /* return cheapest cpu that can fit this task */
 static int select_best_cpu(struct task_struct *p, int target, int reason,
@@ -1998,17 +2012,14 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 	int boost = sched_boost();
 	int cstate, min_cstate = INT_MAX;
 	int prefer_idle = reason ? 1 : sysctl_sched_prefer_idle;
+	int prefer_idle_override = 0;
 
 	cpumask_t search_cpus;
 	struct rq * trq;
 
-	/*
-	 * PF_WAKE_UP_IDLE is a hint to scheduler that the thread waking up
-	 * (p) needs to be placed on idle cpu.
-	 */
-	if ((current->flags & PF_WAKE_UP_IDLE) ||
-			 (p->flags & PF_WAKE_UP_IDLE)) {
+	if (wake_to_idle(p)) {
 		prefer_idle = 1;
+		prefer_idle_override = 1;
 		small_task = 0;
 	}
 
@@ -2148,9 +2159,8 @@ static int select_best_cpu(struct task_struct *p, int target, int reason,
 		}
 	}
 
-	if (min_cstate_cpu >= 0 &&
-	    (prefer_idle || !(best_cpu >= 0 &&
-			      mostly_idle_cpu_sync(best_cpu, min_load, sync))))
+	if (min_cstate_cpu >= 0 && (prefer_idle ||
+		!(best_cpu >= 0 && mostly_idle_cpu_sync(best_cpu, min_load, sync))))
 		best_cpu = min_cstate_cpu;
 done:
 	if (best_cpu < 0) {
@@ -2165,7 +2175,7 @@ done:
 			best_cpu = fallback_idle_cpu;
 	}
 
-	if (cpu_rq(best_cpu)->mostly_idle_freq)
+	if (cpu_rq(best_cpu)->mostly_idle_freq && !prefer_idle_override)
 		best_cpu = select_packing_target(p, best_cpu);
 
 	return best_cpu;
