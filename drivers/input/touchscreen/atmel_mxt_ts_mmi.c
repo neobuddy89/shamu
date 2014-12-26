@@ -29,6 +29,10 @@
 #include <linux/gpio.h>
 #include <linux/pinctrl/consumer.h>
 
+#ifdef CONFIG_WAKE_GESTURES
+#include <linux/wake_gestures.h>
+#endif
+
 enum {
 	STATE_UNKNOWN,
 	STATE_ACTIVE,
@@ -38,6 +42,9 @@ enum {
 	STATE_INIT,
 	STATE_FLASH,
 	STATE_QUERY,
+#ifdef CONFIG_WAKE_GESTURES
+	STATE_WG,
+#endif
 	STATE_INVALID
 };
 
@@ -129,10 +136,17 @@ struct t7_config {
 	u8 idle;
 	u8 active;
 	u8 actv2idle;
+#ifdef CONFIG_WAKE_GESTURES
+	u8 cfg;
+	u8 cfg2;
+#endif
 } __packed;
 
 #define MXT_POWER_CFG_RUN		0
 #define MXT_POWER_CFG_DEEPSLEEP		1
+#ifdef CONFIG_WAKE_GESTURES
+#define MXT_POWER_CFG_WG		2
+#endif
 
 /* MXT_TOUCH_MULTI_T9 field */
 #define MXT_T9_ORIENT		9
@@ -1488,6 +1502,9 @@ static void mxt_proc_t93_messages(struct mxt_data *data, u8 *msg)
 		struct device *dev = &data->client->dev;
 		struct input_dev *input_dev = data->input_dev;
 
+#ifdef CONFIG_WAKE_GESTURES
+		set_vibrate(vib_strength);
+#endif
 		input_report_key(input_dev, KEY_POWER, 1);
 		input_report_key(input_dev, KEY_POWER, 0);
 		input_sync(input_dev);
@@ -2219,9 +2236,15 @@ static int mxt_set_t7_power_cfg(struct mxt_data *data, u8 sleep)
 	int error;
 	struct t7_config *new_config;
 	struct t7_config deepsleep = { .active = 0, .idle = 0 };
-
+#ifdef CONFIG_WAKE_GESTURES
+	struct t7_config wg_mode = { 100, 255, 10, 194, 1 };
+#endif
 	if (sleep == MXT_POWER_CFG_DEEPSLEEP)
 		new_config = &deepsleep;
+#ifdef CONFIG_WAKE_GESTURES
+	else if (sleep == MXT_POWER_CFG_WG)
+		new_config = &wg_mode;
+#endif
 	else
 		new_config = &data->t7_on_cfg;
 
@@ -2396,8 +2419,13 @@ static inline void mxt_restore_default_mode(struct mxt_data *data)
 	data->current_mode = data->default_mode;
 }
 
+#ifdef CONFIG_WAKE_GESTURES
+static const char * const mxt_state_names[] = { "UNKNOWN", "ACTIVE", "SUSPEND",
+	"UNUSED", "STANDBY", "BL", "INIT", "FLASH", "QUERY", "WG", "INVALID" };
+#else
 static const char * const mxt_state_names[] = { "UNKNOWN", "ACTIVE", "SUSPEND",
 	"UNUSED", "STANDBY", "BL", "INIT", "FLASH", "QUERY", "INVALID" };
+#endif
 
 static const char *mxt_state_name(int state)
 {
@@ -2435,6 +2463,17 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			mxt_sensor_state_config(data, SUSPEND_IDX);
 			break;
 
+#ifdef CONFIG_WAKE_GESTURES
+	case STATE_WG:
+		data->mode_is_wakeable = true;
+		data->enable_reporting = true;
+		mxt_enable_wakeup_source(data, true);
+		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WG);
+		if (!data->in_bootloader)
+			mxt_sensor_state_config(data, ACTIVE_IDX);
+			break;
+#endif
+
 	case STATE_ACTIVE:
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
@@ -2469,6 +2508,35 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			mxt_state_name(state));
 	atomic_set(&data->state, state);
 }
+
+#ifdef CONFIG_WAKE_GESTURES
+struct mxt_data *gl_mxt_data;
+
+bool scr_suspended(void)
+{
+	struct mxt_data *mxt_data = gl_mxt_data;
+	return mxt_data->suspended;
+}
+
+void set_internal_dt(bool input)
+{
+	struct mxt_data *mxt_data = gl_mxt_data;
+
+	if (input) {
+		mxt_set_alternate_mode(mxt_data,
+			mxt_data->alternate_mode, true, true);
+	} else {
+		mxt_restore_default_mode(mxt_data);
+	}
+}
+
+bool get_internal_dt(void)
+{
+	struct mxt_data *mxt_data = gl_mxt_data;
+	return mxt_data->mode_is_wakeable;
+}
+#endif
+
 
 static void mxt_free_input_device(struct mxt_data *data)
 {
@@ -4853,6 +4921,10 @@ static int mxt_probe(struct i2c_client *client,
 	data->mem_access_created = true;
 	data->mode_is_persistent = true;
 
+#ifdef CONFIG_WAKE_GESTURES
+	gl_mxt_data = data;
+#endif
+
 	return 0;
 
 err_remove_sysfs_group:
@@ -4907,7 +4979,12 @@ static int mxt_suspend(struct device *dev)
 		mutex_lock(&data->crit_section_lock);
 		dev_dbg(&data->client->dev, "critical section LOCK\n");
 
-		mxt_set_sensor_state(data, STATE_SUSPEND);
+#ifdef CONFIG_WAKE_GESTURES
+		if (s2w_switch)
+			mxt_set_sensor_state(data, STATE_WG);
+		else
+#endif
+			mxt_set_sensor_state(data, STATE_SUSPEND);
 		mxt_reset_slots(data);
 
 		if (data->use_regulator)
