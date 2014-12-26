@@ -568,3 +568,10 @@ config SND_SOC_TPA6165A2
 
 config SND_SOC_FSA8500
 	tristate
+
+config SOUND_CONTROL
+	tristate "WCD9320 Sound Control"
+	depends on SND_SOC_WCD9320
+	default y
+	help
+	  WCD93xx chipset sound control hacks for userspace

@@ -272,3 +272,4 @@ obj-$(CONFIG_SND_SOC_MAX9877)	+= snd-soc-max9877.o
 obj-$(CONFIG_SND_SOC_TPA6130A2)	+= snd-soc-tpa6130a2.o
 obj-$(CONFIG_SND_SOC_TPA6165A2) += snd-soc-tpa6165a2.o
 obj-$(CONFIG_SND_SOC_FSA8500) += snd-soc-fsa8500.o
+obj-$(CONFIG_SOUND_CONTROL)	+= sound_control.o
