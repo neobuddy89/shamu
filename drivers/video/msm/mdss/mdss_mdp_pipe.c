@@ -234,7 +234,6 @@ static inline bool is_unused_smp_allowed(void)
 
         switch (MDSS_GET_MAJOR_MINOR(mdata->mdp_rev)) {
         case MDSS_GET_MAJOR_MINOR(MDSS_MDP_HW_REV_103):
-        case MDSS_GET_MAJOR_MINOR(MDSS_MDP_HW_REV_105):
                 return true;
         default:
                 return false;
