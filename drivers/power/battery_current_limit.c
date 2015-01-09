@@ -177,6 +177,7 @@ static struct bcl_context *gbcl;
 static enum bcl_threshold_state bcl_vph_state = BCL_THRESHOLD_DISABLED,
 		bcl_ibat_state = BCL_THRESHOLD_DISABLED;
 static DEFINE_MUTEX(bcl_notify_mutex);
+static uint32_t bcl_frequency_mask;
 
 static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
@@ -216,16 +217,20 @@ static int bcl_cpufreq_callback(struct notifier_block *nfb,
 		unsigned long event, void *data)
 {
 	struct cpufreq_policy *policy = data;
+	uint32_t max_freq = UINT_MAX;
+
+	if (!(bcl_frequency_mask & BIT(policy->cpu)))
+		return NOTIFY_OK;
 
 	switch (event) {
 	case CPUFREQ_INCOMPATIBLE:
 		if (bcl_vph_state == BCL_LOW_THRESHOLD) {
-			cpufreq_verify_within_limits(policy, 0,
-				gbcl->btm_freq_max);
-		} else if (bcl_vph_state == BCL_HIGH_THRESHOLD) {
-			cpufreq_verify_within_limits(policy, 0,
-				UINT_MAX);
+			max_freq = gbcl->btm_freq_max;
 		}
+		pr_debug("Requesting Max freq:%u for CPU%d\n",
+			max_freq, policy->cpu);
+		cpufreq_verify_within_limits(policy, 0,
+			max_freq);
 		break;
 	}
 
@@ -242,13 +247,17 @@ static void update_cpu_freq(void)
 
 	get_online_cpus();
 	for_each_online_cpu(cpu) {
-		ret = cpufreq_update_policy(cpu);
-		if (ret)
-			pr_err("Error updating policy for CPU%d. ret:%d\n",
+		if (bcl_frequency_mask & BIT(cpu)) {
+			ret = cpufreq_update_policy(cpu);
+			if (ret)
+				pr_err(
+				"Error updating policy for CPU%d. ret:%d\n",
 				cpu, ret);
+		}
 	}
 	put_online_cpus();
 }
+
 static int bcl_get_battery_voltage(int *vbatt)
 {
 	static struct power_supply *psy;
@@ -1109,6 +1118,29 @@ btm_probe_exit:
 	return ret;
 }
 
+static uint32_t get_mask_from_core_handle(struct platform_device *pdev,
+						const char *key)
+{
+	struct device_node *core_phandle = NULL;
+	int i = 0, cpu = 0;
+	uint32_t mask = 0;
+
+	core_phandle = of_parse_phandle(pdev->dev.of_node,
+			key, i++);
+	while (core_phandle) {
+		for_each_possible_cpu(cpu) {
+			if (of_get_cpu_node(cpu, NULL) == core_phandle) {
+				mask |= BIT(cpu);
+				break;
+			}
+		}
+		core_phandle = of_parse_phandle(pdev->dev.of_node,
+			key, i++);
+	}
+
+	return mask;
+}
+
 static int bcl_probe(struct platform_device *pdev)
 {
 	struct bcl_context *bcl = NULL;
@@ -1140,6 +1172,9 @@ static int bcl_probe(struct platform_device *pdev)
 	snprintf(bcl->bcl_type, BCL_NAME_LENGTH, "%s",
 			bcl_type[BCL_IBAT_MONITOR_TYPE]);
 	bcl->bcl_poll_interval_msec = BCL_POLL_INTERVAL;
+
+	bcl_frequency_mask = get_mask_from_core_handle(pdev,
+					 "qcom,bcl-freq-control-list");
 
 	ret = probe_btm_properties(bcl);
 	if (ret == -EPROBE_DEFER)
