@@ -140,7 +140,7 @@ static irqreturn_t msm_csiphy_irq(int irq_num, void *data)
 		msm_camera_io_w(irq,
 			csiphy_dev->base +
 			MIPI_CSIPHY_INTERRUPT_CLEAR0_ADDR + 0x4*i);
-		pr_err("%s MIPI_CSIPHY%d_INTERRUPT_STATUS%d = 0x%x\n",
+		CDBG("%s MIPI_CSIPHY%d_INTERRUPT_STATUS%d = 0x%x\n",
 			 __func__, csiphy_dev->pdev->id, i, irq);
 		msm_camera_io_w(0x1, csiphy_dev->base +
 			MIPI_CSIPHY_GLBL_IRQ_CMD_ADDR);
