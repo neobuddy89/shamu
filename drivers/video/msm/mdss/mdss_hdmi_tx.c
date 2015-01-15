@@ -2529,6 +2529,10 @@ int msm_hdmi_register_audio_codec(struct platform_device *pdev,
 	ops->get_audio_edid_blk = hdmi_tx_get_audio_edid_blk;
 	ops->hdmi_cable_status = hdmi_tx_get_cable_status;
 
+	/* call back function to play short silent audio */
+	hdmi_ctrl->play_short_silent_audio = ops->play_silent_audio_callback;
+	hdmi_ctrl->codec_data = ops->callback_data;
+
 	return 0;
 } /* hdmi_tx_audio_register */
 EXPORT_SYMBOL(msm_hdmi_register_audio_codec);
@@ -2627,6 +2631,11 @@ static int hdmi_tx_start(struct hdmi_tx_ctrl *hdmi_ctrl)
 	if (!hdmi_tx_is_dvi_mode(hdmi_ctrl) &&
 	    hdmi_tx_is_cea_format(hdmi_ctrl->video_resolution)) {
 		hdmi_tx_audio_setup(hdmi_ctrl);
+
+		if (hdmi_ctrl->pdata.primary &&
+			hdmi_ctrl->play_short_silent_audio)
+			hdmi_ctrl->play_short_silent_audio(
+				hdmi_ctrl->codec_data);
 
 		if (!hdmi_tx_is_hdcp_enabled(hdmi_ctrl) &&
 			!hdmi_tx_is_encryption_set(hdmi_ctrl))

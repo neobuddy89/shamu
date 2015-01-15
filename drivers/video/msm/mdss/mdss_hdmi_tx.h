@@ -98,6 +98,9 @@ struct hdmi_tx_ctrl {
 	void *downstream_data;
 
 	void *feature_data[HDMI_TX_FEAT_MAX];
+
+	void *codec_data;
+	u32 (*play_short_silent_audio) (void *codec_data);
 };
 
 #endif /* __MDSS_HDMI_TX_H__ */
