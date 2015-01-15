@@ -181,7 +181,7 @@ static struct ds2_dap_params_states_s ds2_dap_params_states = {true, false,
 static int all_supported_devices = EARPIECE|SPEAKER|WIRED_HEADSET|
 			WIRED_HEADPHONE|BLUETOOTH_SCO|AUX_DIGITAL|
 			ANLG_DOCK_HEADSET|DGTL_DOCK_HEADSET|
-			REMOTE_SUBMIX|ANC_HEADSET|ANC_HEADPHONE|
+			REMOTE_SUBMIX|
 			PROXY|FM|FM_TX|DEVICE_NONE|
 			BLUETOOTH_SCO_HEADSET|BLUETOOTH_SCO_CARKIT;
 
@@ -711,8 +711,6 @@ static int msm_ds2_dap_map_device_to_dolby_cache_devices(int32_t device_id)
 	case WIRED_HEADPHONE:
 	case ANLG_DOCK_HEADSET:
 	case DGTL_DOCK_HEADSET:
-	case ANC_HEADSET:
-	case ANC_HEADPHONE:
 	case BLUETOOTH_SCO:
 	case BLUETOOTH_SCO_HEADSET:
 	case BLUETOOTH_SCO_CARKIT:
@@ -776,10 +774,6 @@ static int msm_ds2_dap_update_num_devices(struct dolby_param_data *dolby_data,
 		dev_arr[idx++] = DGTL_DOCK_HEADSET;
 	if ((idx < array_size) && (supported_devices & REMOTE_SUBMIX))
 		dev_arr[idx++] = REMOTE_SUBMIX;
-	if ((idx < array_size) && (supported_devices & ANC_HEADSET))
-		dev_arr[idx++] = ANC_HEADSET;
-	if ((idx < array_size) && (supported_devices & ANC_HEADPHONE))
-		dev_arr[idx++] = ANC_HEADPHONE;
 	if ((idx < array_size) && (supported_devices & PROXY))
 		dev_arr[idx++] = PROXY;
 	if ((idx < array_size) && (supported_devices & FM))
