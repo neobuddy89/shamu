@@ -29,6 +29,7 @@
 #include <linux/gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/semaphore.h>
+#include <linux/atomic.h>
 
 #ifdef CONFIG_STATE_NOTIFIER
 #include <linux/state_notifier.h>
@@ -392,7 +393,7 @@ struct mxt_data {
 	bool enable_reporting;
 
 	/* Indicates whether device is in suspend */
-	bool suspended;
+	atomic_t suspended;
 
 #ifdef CONFIG_FB
 	struct notifier_block fb_notif;
@@ -1831,7 +1832,7 @@ static irqreturn_t mxt_interrupt(int irq, void *dev_id)
 	int state = mxt_get_sensor_state(data);
 
 	if (data->in_bootloader  ||
-		(data->suspended && !data->mode_is_wakeable) ||
+		(!data->poweron && !data->mode_is_wakeable) ||
 		(state == STATE_UNKNOWN)) {
 		/* bootloader state transition completion */
 		complete(&data->bl_completion);
@@ -2533,7 +2534,6 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 	case STATE_ACTIVE:
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
-		mxt_irq_enable(data, true);
 		data->enable_reporting = true;
 
 		if (!data->mode_is_persistent) {
@@ -2575,6 +2575,9 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 	pr_info("state change %s -> %s\n", mxt_state_name(current_state),
 			mxt_state_name(state));
 	atomic_set(&data->state, state);
+
+	if (state == STATE_ACTIVE)
+		mxt_irq_enable(data, true);
 }
 
 #ifdef CONFIG_WAKE_GESTURES
@@ -2582,8 +2585,8 @@ struct mxt_data *gl_mxt_data;
 
 bool scr_suspended(void)
 {
-	struct mxt_data *mxt_data = gl_mxt_data;
-	return mxt_data->suspended;
+	struct mxt_data *data = gl_mxt_data;
+	return atomic_read(&data->suspended);
 }
 
 void set_internal_dt(bool input)
@@ -3534,7 +3537,7 @@ static ssize_t mxt_reset_store(struct device *dev,
 	if (reset != 1)
 		return -EINVAL;
 
-	if (data->suspended)
+	if (atomic_read(&data->suspended))
 		mxt_resume(&data->client->dev);
 	else {
 		data->enable_reporting = false;
@@ -3648,7 +3651,7 @@ static int mxt_load_fw(struct device *dev)
 	if (ret)
 		goto release_firmware;
 
-	if (data->suspended)
+	if (atomic_read(&data->suspended))
 		mxt_resume(&data->client->dev);
 
 	if (!data->in_bootloader) {
@@ -3821,7 +3824,7 @@ static ssize_t mxt_update_cfg_store(struct device *dev,
 	data->enable_reporting = false;
 	mxt_free_input_device(data);
 
-	if (data->suspended)
+	if (atomic_read(&data->suspended))
 		mxt_resume(&data->client->dev);
 
 	ret = mxt_configure_objects(data);
@@ -4381,7 +4384,7 @@ static ssize_t mxt_tsp_store(struct device *dev,
 
 	pr_debug("state: %s(%d), suspend flag: %d, BL flag: %d\n",
 			mxt_state_name(state), state,
-			mxt_dev_data->suspended,
+			atomic_read(&mxt_dev_data->suspended),
 			mxt_dev_data->in_bootloader);
 
 	if (!strncmp(buf, "on", 2) || !strncmp(buf, "ON", 2))
@@ -4933,6 +4936,9 @@ static int mxt_probe(struct i2c_client *client,
 	init_completion(&data->crc_completion);
 	mutex_init(&data->debug_msg_lock);
 
+	atomic_set(&data->suspended, 0);
+	data->poweron = true;
+
 	error = mxt_gpio_configure(data);
 	if (error)
 		goto err_free_pdata;
@@ -5036,7 +5042,7 @@ static int mxt_suspend(struct device *dev)
 	struct mxt_data *data = i2c_get_clientdata(client);
 	static char ud_stats[PAGE_SIZE];
 
-	if (!data->suspended) {
+	if (atomic_cmpxchg(&data->suspended, 0, 1) == 0) {
 		mxt_lock(&data->crit_section_lock);
 
 #ifdef CONFIG_WAKE_GESTURES
@@ -5052,7 +5058,6 @@ static int mxt_suspend(struct device *dev)
 	}
 
 	data->poweron = false;
-	data->suspended = true;
 
 	mxt_ud_stat(ud_stats, sizeof(ud_stats));
 	pr_info("%s\n", ud_stats);
@@ -5066,7 +5071,7 @@ static int mxt_resume(struct device *dev)
 	struct mxt_data *data = i2c_get_clientdata(client);
 	int state = mxt_get_sensor_state(data);
 
-	if (data->suspended) {
+	if (atomic_cmpxchg(&data->suspended, 1, 0) == 1) {
 		if (data->use_regulator) {
 			mxt_regulator_enable(data);
 			mxt_acquire_irq(data);
@@ -5082,9 +5087,8 @@ static int mxt_resume(struct device *dev)
 	else
 		state = STATE_ACTIVE;
 
-	mxt_set_sensor_state(data, state);
 	data->poweron = true;
-	data->suspended = false;
+	mxt_set_sensor_state(data, state);
 
 	return 0;
 }
@@ -5111,7 +5115,7 @@ static int fb_notifier_callback(struct notifier_block *self,
 		blank = evdata->data;
 		if (*blank == FB_BLANK_UNBLANK ||
 				(*blank == FB_BLANK_VSYNC_SUSPEND &&
-				mxt_dev_data->suspended)) {
+				atomic_read(&mxt_dev_data->suspended))) {
 			queue_work(system_wq, &mxt_dev_data->resume_work);
 			dev_dbg(&mxt_dev_data->client->dev, "queued RESUME\n");
 		} else if (*blank == FB_BLANK_POWERDOWN) {
