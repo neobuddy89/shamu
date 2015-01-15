@@ -22,7 +22,7 @@
 #define DS2_MODULE_ID			0x00010775
 
 #define DS2_DSP_SUPPORTED_ENDP_DEVICE		17
-#define DS2_DEVICES_ALL				22
+#define DS2_DEVICES_ALL				32 /* enum val is 4 bytes */
 
 enum {
 
