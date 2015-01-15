@@ -18,6 +18,8 @@
 #include <linux/jiffies.h>
 #include <linux/sched.h>
 #include <linux/msm_audio_ion.h>
+#include <linux/delay.h>
+#include <linux/module.h>
 #include <sound/apr_audio-v2.h>
 #include <sound/q6afe-v2.h>
 #include <sound/q6audio-v2.h>
@@ -31,6 +33,10 @@ enum {
 	MAX_AFE_CAL_TYPES
 };
 
+enum {
+	STATUS_PORT_STARTED, /* track if AFE port has started */
+	STATUS_MAX
+};
 
 struct afe_ctl {
 	void *apr;
@@ -60,6 +66,14 @@ struct afe_ctl {
 static atomic_t afe_ports_mad_type[SLIMBUS_PORT_LAST - SLIMBUS_0_RX];
 static unsigned long afe_configured_cmd;
 
+struct msm_dai_q6_hdmi_dai_data {
+	DECLARE_BITMAP(status_mask, STATUS_MAX);
+	u32 rate;
+	u32 channels;
+	union afe_port_config port_config;
+};
+
+static atomic_t hdmi_port_start;
 static struct afe_ctl this_afe;
 
 #define TIMEOUT_MS 1000
@@ -1636,6 +1650,7 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 		cfg_type = AFE_PARAM_ID_I2S_CONFIG;
 		break;
 	case HDMI_RX:
+		atomic_set(&hdmi_port_start, 1);
 		cfg_type = AFE_PARAM_ID_HDMI_CONFIG;
 		break;
 	case VOICE_PLAYBACK_TX:
@@ -1709,6 +1724,8 @@ int afe_port_start(u16 port_id, union afe_port_config *afe_config,
 	ret = afe_send_cmd_port_start(port_id);
 
 fail_cmd:
+	if (port_id == HDMI_RX)
+		atomic_set(&hdmi_port_start, 0);
 	mutex_unlock(&this_afe.afe_cmd_lock);
 	return ret;
 }
@@ -1781,6 +1798,29 @@ int afe_get_port_index(u16 port_id)
 		return -EINVAL;
 	}
 }
+
+int afe_short_silence(u32 duration)
+{
+	struct msm_dai_q6_hdmi_dai_data dai_data;
+	u16 bit_width = 16;
+	if (atomic_read(&hdmi_port_start) == 1)
+		return 0;
+
+	dai_data.rate = 48000;
+	dai_data.channels = 2;
+	dai_data.port_config.hdmi_multi_ch.bit_width = bit_width;
+	dai_data.port_config.hdmi_multi_ch.channel_allocation = 0;
+
+	afe_port_start(HDMI_RX, &dai_data.port_config,
+			dai_data.rate);
+
+	msleep(duration);
+
+	afe_close(HDMI_RX);
+
+	return 0;
+}
+EXPORT_SYMBOL(afe_short_silence);
 
 int afe_open(u16 port_id,
 		union afe_port_config *afe_config, int rate)
@@ -3332,6 +3372,8 @@ int afe_close(int port_id)
 	if (ret)
 		pr_err("%s: AFE close failed %d\n", __func__, ret);
 
+	if (port_id == HDMI_RX)
+		atomic_set(&hdmi_port_start, 0);
 fail_cmd:
 	return ret;
 }
