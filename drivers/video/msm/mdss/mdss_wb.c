@@ -141,12 +141,12 @@ static int mdss_wb_probe(struct platform_device *pdev)
 
 	rc = !mdss_wb_parse_dt(pdev, pdata);
 	if (!rc)
-		return rc;
+		goto error_no_mem;
 
 	rc = mdss_wb_dev_init(wb_ctrl);
 	if (rc) {
 		dev_err(&pdev->dev, "unable to set up device nodes for writeback panel\n");
-		return rc;
+		goto error_no_mem;
 	}
 
 	pdata->panel_info.type = WRITEBACK_PANEL;
@@ -160,9 +160,15 @@ static int mdss_wb_probe(struct platform_device *pdev)
 	rc = mdss_register_panel(pdev, pdata);
 	if (rc) {
 		dev_err(&pdev->dev, "unable to register writeback panel\n");
-		return rc;
+		goto error_init;
 	}
 
+	return rc;
+
+error_init:
+	mdss_wb_dev_uninit(wb_ctrl);
+error_no_mem:
+	devm_kfree(&pdev->dev, wb_ctrl);
 	return rc;
 }
 

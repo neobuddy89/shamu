@@ -4057,6 +4057,7 @@ static int hdmi_tx_probe(struct platform_device *pdev)
 			vic = DEFAULT_HDMI_PRIMARY_RESOLUTION;
 
 		hdmi_ctrl->pdata.primary = true;
+		hdmi_ctrl->panel_data.panel_info.is_prim_panel = true;
 		hdmi_ctrl->pdata.cont_splash_enabled = true;
 
 		if (vic)
