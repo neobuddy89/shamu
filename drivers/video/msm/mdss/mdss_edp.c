@@ -795,6 +795,7 @@ static int mdss_edp_device_register(struct mdss_edp_drv_pdata *edp_drv)
 
 	edp_drv->panel_data.panel_info.cont_splash_enabled =
 					edp_drv->cont_splash;
+	edp_drv->panel_data.panel_info.is_prim_panel = true;
 
 	ret = mdss_register_panel(edp_drv->pdev, &edp_drv->panel_data);
 	if (ret) {
