@@ -448,8 +448,8 @@ static void  ramoops_of_init(struct platform_device *pdev)
 	const struct device *dev = &pdev->dev;
 	struct ramoops_platform_data *pdata;
 	struct device_node *np = pdev->dev.of_node;
-	u32 start, size, console, annotate = 0;
-	u32 record, oops;
+	u32 start = 0, size = 0, console = 0, annotate = 0, pmsg = 0;
+	u32 record = 0, oops = 0;
 	int ret;
 
 	pdata = dev_get_drvdata(dev);
@@ -477,6 +477,11 @@ static void  ramoops_of_init(struct platform_device *pdev)
 	if (ret)
 		pr_info("annotation buffer not configured");
 
+	ret = of_property_read_u32(np, "android,ramoops-pmsg-size",
+				&pmsg);
+	if (ret)
+		pr_info("pmsg buffer not configured");
+
 	ret = of_property_read_u32(np, "android,ramoops-record-size",
 				&record);
 	if (ret)
@@ -491,6 +496,7 @@ static void  ramoops_of_init(struct platform_device *pdev)
 	pdata->mem_size = size;
 	pdata->console_size = console;
 	pdata->annotate_size = annotate;
+	pdata->pmsg_size = pmsg;
 	pdata->record_size = record;
 	pdata->dump_oops = (int)oops;
 }
