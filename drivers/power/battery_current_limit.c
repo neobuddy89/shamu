@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -25,6 +25,8 @@
 #include <linux/cpufreq.h>
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/cpu.h>
+#include <linux/cpumask.h>
+
 #define BCL_DEV_NAME "battery_current_limit"
 #define BCL_NAME_LENGTH 20
 /*
@@ -185,18 +187,22 @@ static bool bcl_hotplug_enabled;
 static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
 static bool bcl_hit_shutdown_voltage;
+static cpumask_var_t bcl_cpu_online_mask;
+
 static int bcl_battery_get_property(struct power_supply *psy,
 				enum power_supply_property prop,
 				union power_supply_propval *val)
 {
 	return 0;
 }
+
 static int bcl_battery_set_property(struct power_supply *psy,
 				enum power_supply_property prop,
 				const union power_supply_propval *val)
 {
 	return 0;
 }
+
 static void power_supply_callback(struct power_supply *psy)
 {
 	int vbatt = 0;
@@ -214,12 +220,23 @@ static void power_supply_callback(struct power_supply *psy)
 		bcl_config_vph_adc(gbcl, BCL_HIGH_THRESHOLD_TYPE);
 }
 
+static void bcl_update_online_mask(void)
+{
+	get_online_cpus();
+	cpumask_copy(bcl_cpu_online_mask, cpu_online_mask);
+	put_online_cpus();
+	pr_debug("BCL online Mask tracked %u\n",
+				cpumask_weight(bcl_cpu_online_mask));
+}
+
 static void __ref bcl_handle_hotplug(void)
 {
 	int ret = 0, _cpu = 0;
 	uint32_t prev_hotplug_request = 0;
 
 	mutex_lock(&bcl_hotplug_mutex);
+	if (cpumask_empty(bcl_cpu_online_mask))
+		bcl_update_online_mask();
 	prev_hotplug_request = bcl_hotplug_request;
 
 	if (bcl_vph_state == BCL_LOW_THRESHOLD)
@@ -231,7 +248,8 @@ static void __ref bcl_handle_hotplug(void)
 		goto handle_hotplug_exit;
 
 	for_each_possible_cpu(_cpu) {
-		if (!(bcl_hotplug_mask & BIT(_cpu)))
+		if (!(bcl_hotplug_mask & BIT(_cpu))
+			|| !(cpumask_test_cpu(_cpu, bcl_cpu_online_mask)))
 			continue;
 
 		if (bcl_hotplug_request & BIT(_cpu)) {
@@ -244,7 +262,8 @@ static void __ref bcl_handle_hotplug(void)
 			else
 				pr_info("Set Offline CPU:%d\n", _cpu);
 		} else {
-			if (cpu_online(_cpu))
+			if (cpu_online(_cpu)
+				|| !(prev_hotplug_request & BIT(_cpu)))
 				continue;
 			ret = cpu_up(_cpu);
 			if (ret)
@@ -265,6 +284,9 @@ static int __ref bcl_cpu_ctrl_callback(struct notifier_block *nfb,
 	uint32_t cpu = (uintptr_t)hcpu;
 
 	if (action == CPU_UP_PREPARE || action == CPU_UP_PREPARE_FROZEN) {
+		if (!cpumask_test_and_set_cpu(cpu, bcl_cpu_online_mask))
+			pr_debug("BCL online Mask: %u\n",
+				cpumask_weight(bcl_cpu_online_mask));
 		if ((bcl_hotplug_mask & BIT(cpu))
 			&& (bcl_hotplug_request & BIT(cpu))) {
 			pr_debug("preventing CPU%d from coming online\n", cpu);
@@ -591,12 +613,17 @@ mode_store(struct device *dev, struct device_attribute *attr,
 		pr_err("No gbcl pointer\n");
 		return -EPERM;
 	}
-	if (!strncmp(buf, "enable", 6))
+	if (!strcmp(buf, "enable")) {
 		bcl_mode_set(BCL_DEVICE_ENABLED);
-	else if (!strncmp(buf, "disable", 7))
+		bcl_update_online_mask();
+		pr_info("bcl enabled\n");
+	} else if (!strcmp(buf, "disable")){
 		bcl_mode_set(BCL_DEVICE_DISABLED);
-	else
+		cpumask_clear(bcl_cpu_online_mask);
+		pr_info("bcl disabled\n");
+	} else {
 		return -EINVAL;
+	}
 	return count;
 }
 
@@ -1166,6 +1193,7 @@ static int probe_btm_properties(struct bcl_context *bcl)
 	if (bcl_hotplug_enabled)
 		register_cpu_notifier(&bcl_cpu_notifier);
 
+	cpumask_clear(bcl_cpu_online_mask);
 	bcl_psy.name = bcl_psy_name;
 	bcl_psy.type = POWER_SUPPLY_TYPE_BCL;
 	bcl_psy.get_property     = bcl_battery_get_property;
