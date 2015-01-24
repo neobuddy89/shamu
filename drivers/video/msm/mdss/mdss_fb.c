@@ -3072,6 +3072,13 @@ int mdss_register_panel(struct platform_device *pdev,
 		goto mdss_notfound;
 	}
 
+	if (pdata && !pdata->panel_info.is_prim_panel &&
+		!fbi_list_index) {
+		pr_err("%s %d panel deferred, first panel not prim\n",
+			__func__, pdata->panel_info.type);
+		return -EPROBE_DEFER;
+	}
+
 	fb_pdev = of_find_device_by_node(node);
 	if (fb_pdev) {
 		rc = mdss_fb_register_extra_panel(fb_pdev, pdata);
