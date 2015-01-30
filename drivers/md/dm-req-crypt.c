@@ -48,6 +48,8 @@
 #define DM_REQ_CRYPT_ERROR -1
 #define DM_REQ_CRYPT_ERROR_AFTER_PAGE_MALLOC -2
 
+#define DM_REQ_CRYPT_QUEUE_SIZE 256
+
 struct req_crypt_result {
 	struct completion completion;
 	int err;
@@ -890,6 +892,8 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	char dummy;
 	int err = DM_REQ_CRYPT_ERROR, i;
 	struct crypto_engine_entry *eng_list = NULL;
+	struct block_device *bdev = NULL;
+	struct request_queue *q = NULL;
 
 	DMDEBUG("dm-req-crypt Constructor.\n");
 
@@ -941,6 +945,10 @@ static int req_crypt_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		DMERR(" %s Arg[5] missing, set FDE enabled.\n", __func__);
 		is_fde_enabled = true; /* backward compatible */
 	}
+
+	bdev = dev->bdev;
+	q = bdev_get_queue(bdev);
+	blk_queue_max_hw_sectors(q, DM_REQ_CRYPT_QUEUE_SIZE);
 
 	_req_crypt_io_pool = KMEM_CACHE(req_dm_crypt_io, 0);
 	if (!_req_crypt_io_pool) {
