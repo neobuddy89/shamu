@@ -120,6 +120,12 @@ config MAXIMUM_CURRENT_THROTTLING
 	  turn on/off CPU based current throttling by setting the
 	  credit/upper limit in the CPU registers.
 
+config FORCE_FAST_CHARGE
+	bool "Force faster charge rate for AC/USB"
+	help
+	  This allows users to override default charge rate for both USB and AC
+	  charger input current
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM
