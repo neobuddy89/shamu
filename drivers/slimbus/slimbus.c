@@ -1322,6 +1322,7 @@ static int disconnect_port_ch(struct slim_controller *ctrl, u32 ph)
 		ctrl->ports[pn].state = SLIM_P_UNCFG;
 		ctrl->ports[pn].cfg.watermark = 0;
 		ctrl->ports[pn].cfg.port_opts = 0;
+		ctrl->ports[pn].ch = NULL;
 	}
 	return 0;
 }
@@ -1346,6 +1347,7 @@ int slim_connect_src(struct slim_device *sb, u32 srch, u16 chanh)
 	struct slim_ich *slc = &ctrl->chans[chan];
 	enum slim_port_flow flow = SLIM_HDL_TO_FLOW(srch);
 	u8 la = SLIM_HDL_TO_LA(srch);
+	u8 pn = SLIM_HDL_TO_PORT(srch);
 
 	/* manager ports don't have direction when they are allocated */
 	if (la != SLIM_LA_MANAGER && flow != SLIM_SRC)
@@ -1354,7 +1356,6 @@ int slim_connect_src(struct slim_device *sb, u32 srch, u16 chanh)
 	mutex_lock(&ctrl->sched.m_reconf);
 
 	if (la == SLIM_LA_MANAGER) {
-		u8 pn = SLIM_HDL_TO_PORT(srch);
 		if (pn >= ctrl->nports ||
 			ctrl->ports[pn].state != SLIM_P_UNCFG) {
 			ret = -EINVAL;
@@ -1375,7 +1376,7 @@ int slim_connect_src(struct slim_device *sb, u32 srch, u16 chanh)
 		ret = -EALREADY;
 		goto connect_src_err;
 	}
-
+	ctrl->ports[pn].ch = &slc->prop;
 	ret = connect_port_ch(ctrl, chan, srch, SLIM_SRC);
 
 	if (!ret)
@@ -1434,8 +1435,10 @@ int slim_connect_sink(struct slim_device *sb, u32 *sinkh, int nsink, u16 chanh)
 				(pn >= ctrl->nports ||
 				ctrl->ports[pn].state != SLIM_P_UNCFG))
 				ret = -EINVAL;
-		else
+		else {
+			ctrl->ports[pn].ch = &slc->prop;
 			ret = connect_port_ch(ctrl, chan, sinkh[j], SLIM_SINK);
+		}
 		if (ret) {
 			for (j = j - 1; j >= 0; j--)
 				disconnect_port_ch(ctrl, sinkh[j]);
@@ -1628,8 +1631,10 @@ static int slim_remove_ch(struct slim_controller *ctrl, struct slim_ich *slc)
 		 * disconnect. It is client's responsibility to call disconnect
 		 * on ports owned by the slave device
 		 */
-		if (la == SLIM_LA_MANAGER)
+		if (la == SLIM_LA_MANAGER) {
 			ctrl->ports[SLIM_HDL_TO_PORT(ph)].state = SLIM_P_UNCFG;
+			ctrl->ports[SLIM_HDL_TO_PORT(ph)].ch = NULL;
+		}
 	}
 
 	ph = slc->srch;
