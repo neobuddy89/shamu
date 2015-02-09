@@ -222,40 +222,38 @@ static inline void msm_isp_get_timestamp(struct msm_isp_timestamp *time_stamp)
 	do_gettimeofday(&(time_stamp->event_time));
 }
 
-static inline void msm_isp_get_vt_tstamp(struct vfe_device *vfe_dev,
-	struct msm_isp_timestamp *time_stamp)
+#ifdef CONFIG_MSM_AVTIMER
+static inline void msm_isp_get_avtimer_ts(
+		struct msm_isp_timestamp *time_stamp)
 {
-	uint64_t avtimer_msw_1st = 0, avtimer_lsw = 0;
-	uint64_t avtimer_msw_2nd = 0;
-	uint64_t avtimer_usec = 0;
-	uint64_t avtimer_sec = 0;
-	uint64_t vt_timestamp;
-	uint8_t iter = 0;
-	if (!vfe_dev->vfe_avtimer_base) {
-		pr_err("%s: ioremap failed\n", __func__);
-		return;
+	int rc = 0;
+	uint32_t avtimer_usec = 0;
+	uint64_t avtimer_tick = 0;
+
+	rc = avcs_core_query_timer(&avtimer_tick);
+	if (rc < 0) {
+		pr_err("%s: Error: Invalid AVTimer Tick, rc=%d\n",
+			   __func__, rc);
+		/*In case of error return zero AVTimer Tick Value*/
+		time_stamp->vt_time.tv_sec = 0;
+		time_stamp->vt_time.tv_usec = 0;
+	} else {
+		avtimer_usec = do_div(avtimer_tick, USEC_PER_SEC);
+		time_stamp->vt_time.tv_sec = (uint32_t)(avtimer_tick);
+		time_stamp->vt_time.tv_usec = avtimer_usec;
+		pr_debug("%s: AVTimer TS = %u:%u\n", __func__,
+			(uint32_t)(avtimer_tick), avtimer_usec);
 	}
-	do {
-		avtimer_msw_1st = msm_camera_io_r(vfe_dev->vfe_avtimer_base +
-			VFE_AVTIMER_MSW);
-		avtimer_lsw = msm_camera_io_r(vfe_dev->vfe_avtimer_base +
-			VFE_AVTIMER_LSW);
-		avtimer_msw_2nd = msm_camera_io_r(vfe_dev->vfe_avtimer_base +
-			VFE_AVTIMER_MSW);
-	} while ((avtimer_msw_1st != avtimer_msw_2nd)
-		&& (iter++ < AVTIMER_ITERATION_CTR));
-	if (iter >= AVTIMER_ITERATION_CTR) {
-		pr_err("%s: AVTimer MSW TS did not converge !!!\n", __func__);
-		return;
-	}
-	vt_timestamp = avtimer_msw_1st << 32 | avtimer_lsw;
-	avtimer_usec = do_div(vt_timestamp, USEC_PER_SEC *
-		AVTIMER_TICK_RES_PER_USEC);
-	avtimer_sec =  vt_timestamp;
-	do_div(avtimer_usec, AVTIMER_TICK_RES_PER_USEC);
-	time_stamp->vt_time.tv_sec = (uint32_t)avtimer_sec;
-	time_stamp->vt_time.tv_usec = (uint32_t)avtimer_usec;
 }
+#else
+static inline void msm_isp_get_avtimer_ts(
+		struct msm_isp_timestamp *time_stamp)
+{
+	pr_err("%s: Error: AVTimer driver not available\n", __func__);
+	time_stamp->vt_time.tv_sec = 0;
+	time_stamp->vt_time.tv_usec = 0;
+}
+#endif
 
 int msm_isp_subscribe_event(struct v4l2_subdev *sd, struct v4l2_fh *fh,
 	struct v4l2_event_subscription *sub)
@@ -1265,7 +1263,7 @@ irqreturn_t msm_isp_process_irq(int irq_num, void *data)
 	queue_cmd->vfeInterruptStatus1 = irq_status1;
 	msm_isp_get_timestamp(&queue_cmd->ts);
 	if (vfe_dev->vt_enable)
-		msm_isp_get_vt_tstamp(vfe_dev, &queue_cmd->ts);
+		msm_isp_get_avtimer_ts(&queue_cmd->ts);
 	queue_cmd->cmd_used = 1;
 	vfe_dev->taskletq_idx =
 		(vfe_dev->taskletq_idx + 1) % MSM_VFE_TASKLETQ_SIZE;
