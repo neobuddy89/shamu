@@ -44,6 +44,14 @@ modules.builtin
 /System.map
 /Module.markers
 /Module.symvers
+boot.img
+dt.img
+zImage
+zImage-dtb
+/tmp/*
+/out/*.zip
+/arch/arm/mach-msm/smd_rpc_sym.c
+/arch/arm/crypto/aesbs-core.S
 
 #
 # Debian directory (make deb-pkg)
