@@ -109,7 +109,7 @@ if [ -e $KERNELDIR/arch/arm/boot/zImage-dtb ]; then
 	
 	echo "--- Creating boot.img ---"
 	# copy all needed to out kernel folder
-	./utilities/mkbootimg --kernel zImage-dtb --cmdline 'console=ttyHSL0,115200,n8 androidboot.hardware=hammerhead user_debug=31 msm_watchdog_v2.enable=1 mdss_mdp.panel=dsi disp_idx=0 androidboot.bootdevice=msm_sdcc.1 androidboot.selinux=permissive' --base 0x00000000 --pagesize 2048 --ramdisk_offset 0x02900000 --tags_offset 0x02700000 --ramdisk ramdisk.gz --output boot.img
+	./utilities/mkbootimg --kernel zImage-dtb --cmdline 'console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=shamu msm_rtb.filter=0x37 ehci-hcd.park=3 utags.blkdev=/dev/block/platform/msm_sdcc.1/by-name/utags utags.backup=/dev/block/platform/msm_sdcc.1/by-name/utagsBackup coherent_pool=8M' --base 0x00000000 --pagesize 2048 --ramdisk_offset 0x02900000 --tags_offset 0x02700000 --ramdisk ramdisk.gz --output boot.img
 
 	rm $KERNELDIR/out/boot.img >> /dev/null;
 	rm $KERNELDIR/out/Hydra_* >> /dev/null;
