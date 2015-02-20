@@ -239,4 +239,11 @@ void idle_notifier_register(struct notifier_block *n);
 void idle_notifier_unregister(struct notifier_block *n);
 void idle_notifier_call_chain(unsigned long val);
 
+#ifdef CONFIG_CPU_BOOST
+extern bool check_cpuboost(int cpu);
+#ifdef CONFIG_LCD_NOTIFY
+extern bool wakeup_boost;
+#endif
+#endif
+
 #endif /* _LINUX_CPU_H_ */
