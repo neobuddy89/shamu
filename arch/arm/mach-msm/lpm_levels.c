@@ -120,6 +120,7 @@ module_param_named(
 static int msm_pm_sleep_time_override;
 module_param_named(sleep_time_override,
 	msm_pm_sleep_time_override, int, S_IRUGO | S_IWUSR | S_IWGRP);
+static uint64_t suspend_wake_time;
 
 static struct cpumask num_powered_cores;
 static struct hrtimer lpm_hrtimer;
@@ -330,8 +331,10 @@ static uint64_t lpm_get_system_sleep(bool from_idle, struct cpumask *mask)
 	if (!from_idle) {
 		if (mask)
 			cpumask_copy(mask, cpumask_of(smp_processor_id()));
-		if (msm_pm_sleep_time_override)
-			us = USEC_PER_SEC * msm_pm_sleep_time_override;
+		if (!suspend_wake_time)
+			suspend_wake_time =  msm_pm_sleep_time_override;
+		if (suspend_wake_time)
+			us = USEC_PER_SEC * suspend_wake_time;
 		return us;
 	}
 
@@ -479,6 +482,21 @@ s32 msm_cpuidle_get_deep_idle_latency(void)
 	else
 		return level->pwr.latency_us;
 }
+
+void lpm_suspend_wake_time(uint64_t wakeup_time)
+{
+	if (wakeup_time <= 0) {
+		suspend_wake_time = msm_pm_sleep_time_override;
+		return;
+	}
+
+	if (msm_pm_sleep_time_override &&
+		(msm_pm_sleep_time_override < wakeup_time))
+		suspend_wake_time = msm_pm_sleep_time_override;
+	else
+		suspend_wake_time = wakeup_time;
+}
+EXPORT_SYMBOL(lpm_suspend_wake_time);
 
 static int lpm_cpu_callback(struct notifier_block *cpu_nb,
 	unsigned long action, void *hcpu)
