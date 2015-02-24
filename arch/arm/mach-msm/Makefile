@@ -137,3 +137,5 @@ obj-$(CONFIG_ARCH_RANDOM) += early_random.o
 obj-$(CONFIG_PERFMAP) += perfmap.o
 obj-$(CONFIG_MMI_UNIT_INFO) += mmi-unit-info.o
 obj-$(CONFIG_MMI_SOC_INFO) += mmi_soc_info.o
+
+obj-$(CONFIG_MSM_HOTPLUG) += msm_hotplug.o
