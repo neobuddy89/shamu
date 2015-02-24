@@ -2159,6 +2159,214 @@ no_policy:
 }
 EXPORT_SYMBOL(cpufreq_update_policy);
 
+#ifdef CONFIG_MSM_LIMITER
+/*
+ *	cpufreq_set_freq - set max/min freq for a cpu
+ *	@cpu: CPU whose frequency needs to be changed
+ */
+int cpufreq_set_freq(unsigned int max_freq, unsigned int min_freq,
+			unsigned int cpu)
+{
+	struct cpufreq_policy *cpu_policy;
+	unsigned int ret = 0;
+
+	if (!max_freq && !min_freq)
+		return ret;
+
+	get_online_cpus();
+	if (!cpu_online(cpu)) {
+		if (max_freq)
+			per_cpu(cpufreq_policy_save, cpu).max = max_freq;
+		if (min_freq)
+			per_cpu(cpufreq_policy_save, cpu).min = min_freq;
+	} else {
+		cpu_policy = cpufreq_cpu_get(cpu);
+		if (!cpu_policy) {
+			ret = -EINVAL;
+			goto skip;
+		}
+
+		if (!down_read_trylock(&cpufreq_rwsem)) {
+			cpufreq_cpu_put(cpu_policy);
+			goto skip;
+		}
+
+		down_read(&cpu_policy->rwsem);
+
+		if (max_freq && max_freq >= cpu_policy->min) {
+			cpu_policy->user_policy.max = max_freq;
+			cpu_policy->max = max_freq;
+		}
+		if (min_freq && min_freq <= cpu_policy->max) {
+			cpu_policy->user_policy.min = min_freq;
+			cpu_policy->min = min_freq;
+		}
+
+		up_read(&cpu_policy->rwsem);
+		up_read(&cpufreq_rwsem);
+
+		cpufreq_cpu_put(cpu_policy);
+	}
+skip:
+	put_online_cpus();
+
+	return ret;
+}
+EXPORT_SYMBOL(cpufreq_set_freq);
+
+/*
+ *	cpufreq_get_max - get max freq of a cpu
+ *	@cpu: CPU whose max frequency needs to be known
+ */
+int cpufreq_get_max(unsigned int cpu)
+{
+	struct cpufreq_policy *cpu_policy;
+	unsigned int freq = per_cpu(cpufreq_policy_save, cpu).max;
+
+	get_online_cpus();
+	if (cpu_online(cpu)) {
+		cpu_policy = cpufreq_cpu_get(cpu);
+		if (!cpu_policy)
+			goto skip;
+
+		if (!down_read_trylock(&cpufreq_rwsem)) {
+			cpufreq_cpu_put(cpu_policy);
+			goto skip;
+		}
+
+		down_read(&cpu_policy->rwsem);
+
+		freq = cpu_policy->max;
+
+		up_read(&cpu_policy->rwsem);
+		up_read(&cpufreq_rwsem);
+
+		cpufreq_cpu_put(cpu_policy);
+	}
+skip:
+	put_online_cpus();
+	return freq;
+}
+EXPORT_SYMBOL(cpufreq_get_max);
+
+/*
+ *	cpufreq_get_min - get min freq of a cpu
+ *	@cpu: CPU whose min frequency needs to be known
+ */
+int cpufreq_get_min(unsigned int cpu)
+{
+	struct cpufreq_policy *cpu_policy;
+	unsigned int freq = per_cpu(cpufreq_policy_save, cpu).min;
+
+	get_online_cpus();
+	if (cpu_online(cpu)) {
+		cpu_policy = cpufreq_cpu_get(cpu);
+		if (!cpu_policy)
+			goto skip;
+
+		if (!down_read_trylock(&cpufreq_rwsem)) {
+			cpufreq_cpu_put(cpu_policy);
+			goto skip;
+		}
+
+		down_read(&cpu_policy->rwsem);
+
+		freq = cpu_policy->min;
+
+		up_read(&cpu_policy->rwsem);
+		up_read(&cpufreq_rwsem);
+
+		cpufreq_cpu_put(cpu_policy);
+	}
+skip:
+	put_online_cpus();
+	return freq;
+}
+EXPORT_SYMBOL(cpufreq_get_min);
+
+/*
+ *	cpufreq_set_gov - set governor for a cpu
+ *	@cpu: CPU whose governor needs to be changed
+ *	@target_gov: new governor to be set
+ */
+int cpufreq_set_gov(char *target_gov, unsigned int cpu)
+{
+	struct cpufreq_policy *cpu_policy;
+	unsigned int ret = 0;
+
+	get_online_cpus();
+	if (!cpu_online(cpu)) {
+		strncpy(per_cpu(cpufreq_policy_save, cpu).gov, target_gov,
+			CPUFREQ_NAME_LEN);
+	} else {
+		cpu_policy = cpufreq_cpu_get(cpu);
+		if (!cpu_policy) {
+			ret = -EINVAL;
+			goto skip;
+		}
+
+		if (!down_read_trylock(&cpufreq_rwsem)) {
+			cpufreq_cpu_put(cpu_policy);
+			goto skip;
+		}
+
+		down_read(&cpu_policy->rwsem);
+
+		ret = store_scaling_governor(cpu_policy, target_gov, ret);
+
+		up_read(&cpu_policy->rwsem);
+		up_read(&cpufreq_rwsem);
+
+		cpufreq_cpu_put(cpu_policy);
+	}
+skip:
+	put_online_cpus();
+
+	return ret;
+}
+EXPORT_SYMBOL(cpufreq_set_gov);
+
+/*
+ *	cpufreq_get_gov - get governor for a cpu
+ *	@cpu: CPU whose governor needs to be known
+ */
+char *cpufreq_get_gov(unsigned int cpu)
+{
+	struct cpufreq_policy *cpu_policy;
+	char *val = per_cpu(cpufreq_policy_save, cpu).gov;
+
+	get_online_cpus();
+	if (cpu_online(cpu)) {
+		cpu_policy = cpufreq_cpu_get(cpu);
+		if (!cpu_policy)
+			goto skip;
+
+		if (!down_read_trylock(&cpufreq_rwsem)) {
+			cpufreq_cpu_put(cpu_policy);
+			goto skip;
+		}
+
+		down_read(&cpu_policy->rwsem);
+
+		if (cpu_policy->policy == CPUFREQ_POLICY_POWERSAVE)
+			val = "powersave";
+		else if (cpu_policy->policy == CPUFREQ_POLICY_PERFORMANCE)
+			val = "performance";
+		else if (cpu_policy->governor)
+			val = cpu_policy->governor->name;
+
+		up_read(&cpu_policy->rwsem);
+		up_read(&cpufreq_rwsem);
+
+		cpufreq_cpu_put(cpu_policy);
+	}
+skip:
+	put_online_cpus();
+	return val;
+}
+EXPORT_SYMBOL(cpufreq_get_gov);
+#endif
+
 static int cpufreq_cpu_callback(struct notifier_block *nfb,
 					unsigned long action, void *hcpu)
 {
