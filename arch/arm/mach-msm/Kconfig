@@ -1470,6 +1470,14 @@ config MSM_HOTPLUG
 	  The MSM hotplug driver controls on-/offlining of additional cores based
 	  on current cpu load.
 
+config INTELLI_HOTPLUG
+	bool "Intelli hotplug driver"
+	depends on HOTPLUG_CPU
+	default y
+	help
+	  An intelligent cpu hotplug driver for
+	  Low Latency Frequency Transition capable processors.
+
 config MSM_LIMITER
 	bool "MSM Frequency Limiter Driver"
 	default y
