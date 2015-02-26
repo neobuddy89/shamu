@@ -79,7 +79,6 @@ static bool psm_nodes_called;
 static bool psm_probed;
 static bool freq_mitigation_enabled;
 static bool hotplug_enabled;
-static bool interrupt_mode_enable;
 static bool msm_thermal_probed;
 static bool gfx_phase_ctrl_enabled;
 static bool cx_phase_ctrl_enabled;
@@ -252,6 +251,29 @@ enum PMIC_SW_MODE {
 	_attr.store = _phase##_phase_store; \
 	sysfs_attr_init(&_attr.attr); \
 	_attr_gr.attrs[j] = &_attr.attr;
+
+#define DEFAULT_POLLING_MS     250
+/* last 3 minutes based on 250ms polling cycle */
+#define MAX_HISTORY_SZ         ((3*60*1000) / DEFAULT_POLLING_MS)
+
+struct msm_thermal_stat_data {
+	int32_t temp_history[MAX_HISTORY_SZ];
+	uint32_t throttled;
+	uint32_t warning;
+	uint32_t normal;
+};
+static struct msm_thermal_stat_data msm_thermal_stats;
+
+/* module parameters */
+module_param_named(poll_ms, msm_thermal_info.poll_ms, uint, 0664);
+module_param_named(limit_temp_degC, msm_thermal_info.limit_temp_degC,
+			int, 0664);
+module_param_named(freq_control_mask, msm_thermal_info.bootup_freq_control_mask,
+			uint, 0664);
+module_param_named(core_limit_temp_degC, msm_thermal_info.core_limit_temp_degC,
+			int, 0664);
+module_param_named(core_control_mask, msm_thermal_info.core_control_mask,
+			uint, 0664);
 
 static int  msm_thermal_cpufreq_callback(struct notifier_block *nfb,
 		unsigned long event, void *data)
@@ -2267,35 +2289,35 @@ static void __ref disable_msm_thermal(void)
 	put_online_cpus();
 }
 
-static void interrupt_mode_init(void)
+static void thermal_subsystem_init(void)
 {
-	if (!msm_thermal_probed) {
-		interrupt_mode_enable = true;
+	if (!msm_thermal_probed)
 		return;
-	}
-	if (polling_enabled) {
-		pr_info("Interrupt mode init\n");
-		polling_enabled = 0;
-		disable_msm_thermal();
-		hotplug_init();
-		freq_mitigation_init();
-		thermal_monitor_init();
-		msm_thermal_add_cx_nodes();
-		msm_thermal_add_gfx_nodes();
-	}
+
+	disable_msm_thermal();
+	hotplug_init();
+	freq_mitigation_init();
+	thermal_monitor_init();
+	msm_thermal_add_cx_nodes();
+	msm_thermal_add_gfx_nodes();
 }
 
 static int __ref set_enabled(const char *val, const struct kernel_param *kp)
 {
 	int ret = 0;
 
-	ret = param_set_bool(val, kp);
-	if (!enabled)
-		interrupt_mode_init();
-	else
-		pr_info("no action for enabled = %d\n",
-			enabled);
-
+	if (*val == '0' || *val == 'n' || *val == 'N') {
+		enabled = 0;
+		thermal_subsystem_init();
+	} else {
+		if (!enabled) {
+			enabled = 1;
+			schedule_delayed_work(&check_temp_work,
+				msecs_to_jiffies(msm_thermal_info.poll_ms));
+			pr_info("%s: rescheduling...\n", KBUILD_MODNAME);
+		} else
+			pr_info("%s: already running...\n", KBUILD_MODNAME);
+	}
 	pr_info("enabled = %d\n", enabled);
 
 	return ret;
@@ -2308,6 +2330,56 @@ static struct kernel_param_ops module_ops = {
 
 module_param_cb(enabled, &module_ops, &enabled, 0644);
 MODULE_PARM_DESC(enabled, "enforce thermal limit on cpu");
+
+static int set_gfx_enabled(const char *val, const struct kernel_param *kp)
+{
+        int ret = 0;
+
+        if (*val == '0' || *val == 'n' || *val == 'N') {
+                gfx_phase_ctrl_enabled = 0;
+        } else {
+                if (!gfx_phase_ctrl_enabled) {
+                        gfx_phase_ctrl_enabled = 1;
+                }
+        }
+        pr_info("gfx enabled = %d\n", gfx_phase_ctrl_enabled);
+
+        return ret;
+}
+
+static struct kernel_param_ops gfx_module_ops = {
+        .set = set_gfx_enabled,
+        .get = param_get_bool,
+};
+
+module_param_cb(gfx_cond_enabled, &gfx_module_ops,
+		&gfx_phase_ctrl_enabled, 0644);
+MODULE_PARM_DESC(gfx_cond_enabled, "gfx phase cond enabled");
+
+static int set_cx_enabled(const char *val, const struct kernel_param *kp)
+{
+        int ret = 0;
+
+        if (*val == '0' || *val == 'n' || *val == 'N') {
+                cx_phase_ctrl_enabled = 0;
+        } else {
+                if (!cx_phase_ctrl_enabled) {
+                        cx_phase_ctrl_enabled = 1;
+                }
+        }
+        pr_info("cx enabled = %d\n", cx_phase_ctrl_enabled);
+
+        return ret;
+}
+
+static struct kernel_param_ops cx_module_ops = {
+        .set = set_cx_enabled,
+        .get = param_get_bool,
+};
+
+module_param_cb(cx_cond_enabled, &cx_module_ops,
+                &cx_phase_ctrl_enabled, 0644);
+MODULE_PARM_DESC(cx_cond_enabled, "cx phase cond enabled");
 
 static ssize_t show_cc_enabled(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
@@ -2465,6 +2537,84 @@ pre_init_exit:
 	return ret;
 }
 
+static ssize_t show_thermal_stats(struct kobject *kobj,
+			struct kobj_attribute *attr, char *buf)
+{
+
+	int i = 0;
+	int tmp = 0;
+
+	/* clear out old stats */
+	msm_thermal_stats.throttled = 0;
+	msm_thermal_stats.warning = 0;
+	msm_thermal_stats.normal = 0;
+
+	for (i = 0; i < MAX_HISTORY_SZ; i++) {
+		tmp = msm_thermal_stats.temp_history[i];
+		if (tmp >= msm_thermal_info.limit_temp_degC)
+			msm_thermal_stats.throttled++;
+		else if (tmp < msm_thermal_info.limit_temp_degC &&
+			tmp >= (msm_thermal_info.limit_temp_degC -
+				msm_thermal_info.temp_hysteresis_degC))
+			msm_thermal_stats.warning++;
+		else
+			msm_thermal_stats.normal++;
+	}
+	return snprintf(buf, PAGE_SIZE, "%u %u %u\n",
+			msm_thermal_stats.throttled,
+			msm_thermal_stats.warning,
+			msm_thermal_stats.normal);
+}
+
+static __refdata struct kobj_attribute msm_thermal_stat_attr =
+__ATTR(statistics, 0444, show_thermal_stats, NULL);
+
+static __refdata struct attribute *msm_thermal_stat_attrs[] = {
+	&msm_thermal_stat_attr.attr,
+	NULL,
+};
+
+static __refdata struct attribute_group msm_thermal_stat_attr_group = {
+	.attrs = msm_thermal_stat_attrs,
+};
+
+static __init int msm_thermal_add_stat_nodes(void)
+{
+	struct kobject *module_kobj = NULL;
+	struct kobject *stat_kobj = NULL;
+	int ret = 0;
+
+	module_kobj = kset_find_obj(module_kset, KBUILD_MODNAME);
+	if (!module_kobj) {
+		pr_err("%s: cannot find kobject for module\n",
+			KBUILD_MODNAME);
+		ret = -ENOENT;
+		goto done_stat_nodes;
+	}
+
+	stat_kobj = kobject_create_and_add("thermal_stats", module_kobj);
+	if (!stat_kobj) {
+		pr_err("%s: cannot create core control kobj\n",
+			KBUILD_MODNAME);
+		ret = -ENOMEM;
+		goto done_stat_nodes;
+	}
+
+	ret = sysfs_create_group(stat_kobj, &msm_thermal_stat_attr_group);
+	if (ret) {
+		pr_err("%s: cannot create group\n", KBUILD_MODNAME);
+		goto done_stat_nodes;
+	}
+
+	return 0;
+
+done_stat_nodes:
+	if (stat_kobj)
+		kobject_del(stat_kobj);
+
+       return ret;
+}
+
 int msm_thermal_init(struct msm_thermal_data *pdata)
 {
 	int ret = 0;
@@ -2503,6 +2653,8 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 
 	if (num_possible_cpus() > 1)
 		register_cpu_notifier(&msm_thermal_cpu_notifier);
+
+	thermal_subsystem_init();
 
 	return ret;
 }
@@ -3275,14 +3427,8 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
 		msm_thermal_add_vdd_rstr_nodes();
 		vdd_rstr_nodes_called = false;
 	}
-	msm_thermal_ioctl_init();
 	ret = msm_thermal_init(&data);
 	msm_thermal_probed = true;
-
-	if (interrupt_mode_enable) {
-		interrupt_mode_init();
-		interrupt_mode_enable = false;
-	}
 
 	return ret;
 fail:
@@ -3295,7 +3441,6 @@ fail:
 
 static int msm_thermal_dev_exit(struct platform_device *inp_dev)
 {
-	msm_thermal_ioctl_cleanup();
 	if (thresh) {
 		if (vdd_rstr_enabled)
 			kfree(thresh[MSM_VDD_RESTRICTION].thresh_list);
@@ -3337,7 +3482,8 @@ int __init msm_thermal_late_init(void)
 		msm_thermal_add_cc_nodes();
 	msm_thermal_add_psm_nodes();
 	msm_thermal_add_vdd_rstr_nodes();
-	interrupt_mode_init();
+	msm_thermal_add_stat_nodes();
+
 	return 0;
 }
 late_initcall(msm_thermal_late_init);
