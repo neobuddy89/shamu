@@ -28,12 +28,11 @@
 #define DEFAULT_RESUME_FREQUENCY	2649600
 #define DEFAULT_MIN_FREQUENCY		300000
 
-static unsigned int debug = 0;
-module_param_named(debug_mask, debug, uint, 0644);
+static unsigned int debug_mask = 0;
 
 #define dprintk(msg...)		\
 do { 				\
-	if (debug)		\
+	if (debug_mask)		\
 		pr_info(msg);	\
 } while (0)
 
@@ -256,6 +255,32 @@ static ssize_t limiter_enabled_store(struct kobject *kobj,
 	return count;
 }
 
+static ssize_t debug_mask_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%u\n", debug_mask);
+}
+
+static ssize_t debug_mask_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u\n", &val);
+	if (ret != 1 || val < 0 || val > 1)
+		return -EINVAL;
+
+	if (val == debug_mask)
+		return count;
+
+	debug_mask = val;
+
+	return count;
+}
+
+
 static ssize_t suspend_defer_time_show(struct kobject *kobj,
 		struct kobj_attribute *attr, char *buf)
 {
@@ -454,6 +479,11 @@ static struct kobj_attribute limiter_enabled_attribute =
 		limiter_enabled_show,
 		limiter_enabled_store);
 
+static struct kobj_attribute debug_mask_attribute =
+	__ATTR(debug_mask, 0666,
+		debug_mask_show,
+		debug_mask_store);
+
 static struct kobj_attribute suspend_defer_time_attribute =
 	__ATTR(suspend_defer_time, 0666,
 		suspend_defer_time_show,
@@ -467,6 +497,7 @@ static struct kobj_attribute suspend_max_freq_attribute =
 static struct attribute *msm_cpufreq_limit_attrs[] =
 	{
 		&limiter_enabled_attribute.attr,
+		&debug_mask_attribute.attr,
 		&suspend_defer_time_attribute.attr,
 		&suspend_max_freq_attribute.attr,
 		&resume_max_freq_0.attr,
@@ -502,12 +533,14 @@ static struct attribute_group msm_cpufreq_limit_attr_group =
 		.attrs = msm_cpufreq_limit_attrs,
 	};
 
+static struct kobject *msm_cpufreq_limit_kobj;
+
 static int msm_cpufreq_limit_init(void)
 {
 	int ret;
-	struct kobject *msm_cpufreq_limit_kobj;
 
-	msm_cpufreq_limit_kobj = kset_find_obj(module_kset, MSM_LIMIT);
+	msm_cpufreq_limit_kobj =
+		kobject_create_and_add(MSM_LIMIT, kernel_kobj);
 	if (!msm_cpufreq_limit_kobj) {
 		pr_err("%s msm_cpufreq_limit_kobj kobject create failed!\n",
 			__func__);
@@ -535,6 +568,9 @@ err_dev:
 
 static void msm_cpufreq_limit_exit(void)
 {
+	if (msm_cpufreq_limit_kobj != NULL)
+		kobject_put(msm_cpufreq_limit_kobj);
+
 	if (limit.limiter_enabled)
 		msm_cpufreq_limit_stop();
 
