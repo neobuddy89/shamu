@@ -19,7 +19,6 @@
 #include <linux/input.h>
 #include <linux/kobject.h>
 #include <linux/fb.h>
-#include <linux/notifier.h>
 #include <linux/cpufreq.h>
 
 #define INTELLI_PLUG			"intelli_plug"
@@ -505,6 +504,11 @@ static int __ref intelli_plug_start(void)
 	}
 
 	notif.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&notif)) {
+		pr_err("%s: Failed to register FB notifier callback\n",
+			INTELLI_PLUG);
+		goto err_dev;
+	}
 
 	ret = input_register_handler(&intelli_plug_input_handler);
 	if (ret) {
@@ -560,6 +564,7 @@ static void intelli_plug_stop(void)
 	cancel_work_sync(&up_down_work);
 	cancel_delayed_work_sync(&intelli_plug_work);
 	mutex_destroy(&intelli_plug_mutex);
+	fb_unregister_client(&notif);
 	notif.notifier_call = NULL;
 
 	input_unregister_handler(&intelli_plug_input_handler);

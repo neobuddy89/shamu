@@ -27,7 +27,6 @@
 #include <linux/input.h>
 #include <linux/time.h>
 #include <linux/fb.h>
-#include <linux/notifier.h>
 
 struct cpu_sync {
 	struct delayed_work boost_rem;
@@ -563,6 +562,8 @@ static int cpu_boost_init(void)
 		pr_err("Cannot register cpuboost hotplug handler.\n");
 
 	notif.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&notif))
+		pr_err("Cannot register FB notifier callback for cpuboost.\n");
 
 	return ret;
 }

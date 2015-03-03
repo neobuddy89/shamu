@@ -20,7 +20,6 @@
 #include <linux/slab.h>
 #include <linux/cpufreq.h>
 #include <linux/fb.h>
-#include <linux/notifier.h>
 #include <linux/mutex.h>
 #include <linux/input.h>
 #include <linux/math64.h>
@@ -693,6 +692,11 @@ static int __ref msm_hotplug_start(void)
 	}
 
 	hotplug.notif.notifier_call = fb_notifier_callback;
+	if (fb_register_client(&hotplug.notif)) {
+		pr_err("%s: Failed to register FB notifier callback\n",
+			MSM_HOTPLUG);
+		goto err_dev;
+	}
 
 	ret = input_register_handler(&hotplug_input_handler);
 	if (ret) {
@@ -761,6 +765,7 @@ static void msm_hotplug_stop(void)
 	mutex_destroy(&stats.stats_mutex);
 	kfree(stats.load_hist);
 
+	fb_unregister_client(&hotplug.notif);
 	hotplug.notif.notifier_call = NULL;
 	input_unregister_handler(&hotplug_input_handler);
 
