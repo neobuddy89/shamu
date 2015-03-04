@@ -16,7 +16,11 @@
 #include <linux/workqueue.h>
 #include <linux/cpu.h>
 #include <linux/cpufreq.h>
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#else
 #include <linux/fb.h>
+#endif
 
 #define MSM_CPUFREQ_LIMIT_MAJOR		3
 #define MSM_CPUFREQ_LIMIT_MINOR		5
@@ -142,6 +146,24 @@ static void __msm_limit_resume(void)
 	queue_work_on(0, limiter_wq, &limit.resume_work);
 }
 
+#ifdef CONFIG_STATE_NOTIFIER
+static int state_notifier_callback(struct notifier_block *this,
+				unsigned long event, void *data)
+{
+	switch (event) {
+		case STATE_NOTIFIER_ACTIVE:
+			__msm_limit_resume();
+			break;
+		case STATE_NOTIFIER_SUSPEND:
+			__msm_limit_suspend();
+			break;
+		default:
+			break;
+	}
+
+	return NOTIFY_OK;
+}
+#else
 static int fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data)
 {
@@ -167,7 +189,7 @@ static int fb_notifier_callback(struct notifier_block *self,
 
 	return 0;
 }
-
+#endif
 
 static int msm_cpufreq_limit_start(void)
 {
@@ -183,12 +205,21 @@ static int msm_cpufreq_limit_start(void)
 		goto err_out;
 	}
 
+#ifdef CONFIG_STATE_NOTIFIER
+	limit.notif.notifier_call = state_notifier_callback;
+	if (state_register_client(&limit.notif)) {
+		pr_err("%s: Failed to register State notifier callback\n",
+			MSM_LIMIT);
+		goto err_dev;
+	}
+#else
 	limit.notif.notifier_call = fb_notifier_callback;
 	if (fb_register_client(&limit.notif)) {
 		pr_err("%s: Failed to register FB notifier callback\n",
 			MSM_LIMIT);
 		goto err_dev;
 	}
+#endif
 
 	for_each_possible_cpu(cpu)
 		mutex_init(&limit.msm_limiter_mutex[cpu]);
@@ -220,7 +251,11 @@ static void msm_cpufreq_limit_stop(void)
 	for_each_possible_cpu(cpu)	
 		mutex_destroy(&limit.msm_limiter_mutex[cpu]);
 
+#ifdef CONFIG_STATE_NOTIFIER
+	state_unregister_client(&limit.notif);
+#else
 	fb_unregister_client(&limit.notif);
+#endif
 	limit.notif.notifier_call = NULL;
 	destroy_workqueue(limiter_wq);
 }

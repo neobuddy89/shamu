@@ -19,7 +19,11 @@
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/cpufreq.h>
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#else
 #include <linux/fb.h>
+#endif
 #include <linux/mutex.h>
 #include <linux/input.h>
 #include <linux/math64.h>
@@ -551,6 +555,24 @@ static void __msm_hotplug_resume(void)
 	queue_work_on(0, susp_wq, &hotplug.resume_work);
 }
 
+#ifdef CONFIG_STATE_NOTIFIER
+static int state_notifier_callback(struct notifier_block *this,
+				unsigned long event, void *data)
+{
+	switch (event) {
+		case STATE_NOTIFIER_ACTIVE:
+			__msm_hotplug_resume();
+			break;
+		case STATE_NOTIFIER_SUSPEND:
+			__msm_hotplug_suspend();
+			break;
+		default:
+			break;
+	}
+
+	return NOTIFY_OK;
+}
+#else
 static int fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data)
 {
@@ -576,6 +598,7 @@ static int fb_notifier_callback(struct notifier_block *self,
 
 	return 0;
 }
+#endif
 
 static void hotplug_input_event(struct input_handle *handle, unsigned int type,
 				unsigned int code, int value)
@@ -691,12 +714,21 @@ static int __ref msm_hotplug_start(void)
 		goto err_out;
 	}
 
+#ifdef CONFIG_STATE_NOTIFIER
+	hotplug.notif.notifier_call = state_notifier_callback;
+	if (state_register_client(&hotplug.notif)) {
+		pr_err("%s: Failed to register State notifier callback\n",
+			MSM_HOTPLUG);
+		goto err_dev;
+	}
+#else
 	hotplug.notif.notifier_call = fb_notifier_callback;
 	if (fb_register_client(&hotplug.notif)) {
 		pr_err("%s: Failed to register FB notifier callback\n",
 			MSM_HOTPLUG);
 		goto err_dev;
 	}
+#endif
 
 	ret = input_register_handler(&hotplug_input_handler);
 	if (ret) {
@@ -765,7 +797,11 @@ static void msm_hotplug_stop(void)
 	mutex_destroy(&stats.stats_mutex);
 	kfree(stats.load_hist);
 
+#ifdef CONFIG_STATE_NOTIFIER
+	state_unregister_client(&hotplug.notif);
+#else
 	fb_unregister_client(&hotplug.notif);
+#endif
 	hotplug.notif.notifier_call = NULL;
 	input_unregister_handler(&hotplug_input_handler);
 
