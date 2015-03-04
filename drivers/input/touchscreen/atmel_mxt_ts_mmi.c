@@ -29,6 +29,10 @@
 #include <linux/gpio.h>
 #include <linux/pinctrl/consumer.h>
 
+#ifdef CONFIG_STATE_NOTIFIER
+#include <linux/state_notifier.h>
+#endif
+
 #ifdef CONFIG_WAKE_GESTURES
 #include <linux/wake_gestures.h>
 #endif
@@ -2450,10 +2454,21 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		/* drop flag to allow object specific message handling */
 		if (data->in_bootloader)
 			data->in_bootloader = false;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_QUERY, NULL);
+#endif
+		break;
 	case STATE_UNKNOWN:
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_UNKNOWN, NULL);
+#endif
+		break;
 	case STATE_FLASH:
 		/* no special handling for these states */
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_FLASH, NULL);
+#endif
+		break;
 
 	case STATE_SUSPEND:
 		if (!data->mode_is_wakeable)
@@ -2461,8 +2476,10 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		data->enable_reporting = false;
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, SUSPEND_IDX);
-			break;
-
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_SUSPEND, NULL);
+#endif
+		break;
 #ifdef CONFIG_WAKE_GESTURES
 	case STATE_WG:
 		data->mode_is_wakeable = true;
@@ -2471,7 +2488,10 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WG);
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_WG, NULL);
+#endif
+		break;
 #endif
 
 	case STATE_ACTIVE:
@@ -2484,24 +2504,36 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			mxt_restore_default_mode(data);
 			pr_debug("Non-persistent mode; restoring default\n");
 		}
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_ACTIVE, NULL);
+#endif
+		break;
 
 	case STATE_STANDBY:
 		mxt_irq_enable(data, false);
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_STANDBY, NULL);
+#endif
+		break;
 
 	case STATE_BL:
 		if (!data->in_bootloader)
 			data->in_bootloader = true;
 
 		mxt_irq_enable(data, false);
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_BL, NULL);
+#endif
+		break;
 
 	case STATE_INIT:
 		/* set flag to avoid object specific message handling */
 		if (!data->in_bootloader)
 			data->in_bootloader = true;
-			break;
+#ifdef CONFIG_STATE_NOTIFIER
+		state_notifier_call_chain(STATE_NOTIFIER_INIT, NULL);
+#endif
+		break;
 	}
 
 	pr_info("state change %s -> %s\n", mxt_state_name(current_state),
