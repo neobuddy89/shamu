@@ -17,6 +17,9 @@
 #include <asm/fncpy.h>
 #include <asm/mach-types.h>
 #include <asm/system_misc.h>
+#include <linux/memblock.h>
+#include <linux/of_fdt.h>
+#include <asm/mmu_writeable.h>
 
 extern void relocate_new_kernel(void);
 extern const unsigned int relocate_new_kernel_size;
@@ -25,6 +28,12 @@ extern unsigned long kexec_start_address;
 extern unsigned long kexec_indirection_page;
 extern unsigned long kexec_mach_type;
 extern unsigned long kexec_boot_atags;
+#ifdef CONFIG_KEXEC_HARDBOOT
+extern unsigned long kexec_hardboot;
+extern unsigned long kexec_boot_atags_len;
+extern unsigned long kexec_kernel_len;
+void (*kexec_hardboot_hook)(void);
+#endif
 
 static atomic_t waiting_for_crash_ipi;
 
@@ -50,12 +59,22 @@ int machine_kexec_prepare(struct kimage *image)
 					       current_segment->memsz))
 			return -EINVAL;
 
+#ifdef CONFIG_KEXEC_HARDBOOT
+		if(current_segment->mem == image->start)
+			mem_text_write_kernel_word(&kexec_kernel_len, current_segment->memsz);
+#endif
+
 		err = get_user(header, (__be32*)current_segment->buf);
 		if (err)
 			return err;
 
 		if (be32_to_cpu(header) == OF_DT_HEADER)
-			kexec_boot_atags = current_segment->mem;
+		{
+			mem_text_write_kernel_word(&kexec_boot_atags, current_segment->mem);
+#ifdef CONFIG_KEXEC_HARDBOOT
+			mem_text_write_kernel_word(&kexec_boot_atags_len, current_segment->memsz);
+#endif
+		}
 	}
 	return 0;
 }
@@ -151,12 +170,14 @@ void machine_kexec(struct kimage *image)
 	reboot_code_buffer = page_address(image->control_code_page);
 
 	/* Prepare parameters for reboot_code_buffer*/
-	kexec_start_address = image->start;
-	kexec_indirection_page = page_list;
-	kexec_mach_type = machine_arch_type;
+	mem_text_write_kernel_word(&kexec_start_address, image->start);
+	mem_text_write_kernel_word(&kexec_indirection_page, page_list);
+	mem_text_write_kernel_word(&kexec_mach_type, machine_arch_type);
 	if (!kexec_boot_atags)
-		kexec_boot_atags = image->start - KEXEC_ARM_ZIMAGE_OFFSET + KEXEC_ARM_ATAGS_OFFSET;
-
+		mem_text_write_kernel_word(&kexec_boot_atags, image->start - KEXEC_ARM_ZIMAGE_OFFSET + KEXEC_ARM_ATAGS_OFFSET);
+#ifdef CONFIG_KEXEC_HARDBOOT
+	mem_text_write_kernel_word(&kexec_hardboot, image->hardboot);
+#endif
 
 	/* copy our kernel relocation code to the control code page */
 	reboot_entry = fncpy(reboot_code_buffer,
@@ -169,6 +190,12 @@ void machine_kexec(struct kimage *image)
 
 	if (kexec_reinit)
 		kexec_reinit();
+
+#ifdef CONFIG_KEXEC_HARDBOOT
+	/* Run any final machine-specific shutdown code. */
+	if (image->hardboot && kexec_hardboot_hook)
+		kexec_hardboot_hook();
+#endif
 
 	soft_restart(reboot_entry_phys);
 }
