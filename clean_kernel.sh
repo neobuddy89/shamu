@@ -29,7 +29,7 @@ rm -f $KERNELDIR/boot.img >> /dev/null;
 rm -f $KERNELDIR/dt.img >> /dev/null;
 rm -rf $KERNELDIR/out/system/lib/modules >> /dev/null;
 rm -rf $KERNELDIR/out/tmp_modules >> /dev/null;
-rm -f $KERNELDIR/out/Hydra-Kernel_* >> /dev/null;
+rm -f $KERNELDIR/out/Hydra_* >> /dev/null;
 rm -rf $KERNELDIR/tmp >> /dev/null;
 
 # clean up leftover junk
