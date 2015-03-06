@@ -256,9 +256,6 @@ static void bricked_hotplug_suspend(struct work_struct *work)
 {
 	int cpu;
 
-	if (!hotplug.bricked_enabled)
-		return;
-
 	mutex_lock(&hotplug.bricked_hotplug_mutex);
 	hotplug.suspended = 1;
 	hotplug.min_cpus_online_res = hotplug.min_cpus_online;
@@ -287,9 +284,6 @@ static void bricked_hotplug_suspend(struct work_struct *work)
 static void __ref bricked_hotplug_resume(struct work_struct *work)
 {
 	int cpu, required_reschedule = 0, required_wakeup = 0;
-
-	if (!hotplug.bricked_enabled)
-		return;
 
 	if (hotplug.suspended) {
 		mutex_lock(&hotplug.bricked_hotplug_mutex);
@@ -325,6 +319,9 @@ static void __ref bricked_hotplug_resume(struct work_struct *work)
 
 static void __bricked_hotplug_resume(void)
 {
+	if (!hotplug.bricked_enabled)
+		return;
+
 	flush_workqueue(susp_wq);
 	cancel_delayed_work_sync(&suspend_work);
 	queue_work_on(0, susp_wq, &resume_work);
@@ -332,6 +329,9 @@ static void __bricked_hotplug_resume(void)
 
 static void __bricked_hotplug_suspend(void)
 {
+	if (!hotplug.bricked_enabled || hotplug.suspended)
+		return;
+
 	INIT_DELAYED_WORK(&suspend_work, bricked_hotplug_suspend);
 	queue_delayed_work_on(0, susp_wq, &suspend_work, 
 		msecs_to_jiffies(hotplug.suspend_defer_time * 1000)); 

@@ -289,9 +289,6 @@ static void intelli_plug_suspend(struct work_struct *work)
 {
 	int cpu = 0;
 
-	if (atomic_read(&intelli_plug_active) == 0)
-		return;
-
 	mutex_lock(&intelli_plug_mutex);
 	hotplug_suspended = true;
 	min_cpus_online_res = min_cpus_online;
@@ -320,9 +317,6 @@ static void intelli_plug_suspend(struct work_struct *work)
 static void __ref intelli_plug_resume(struct work_struct *work)
 {
 	int cpu, required_reschedule = 0, required_wakeup = 0;
-
-	if (atomic_read(&intelli_plug_active) == 0)
-		return;
 
 	if (hotplug_suspended) {
 		mutex_lock(&intelli_plug_mutex);
@@ -357,6 +351,10 @@ static void __ref intelli_plug_resume(struct work_struct *work)
 
 static void __intelli_plug_suspend(void)
 {
+	if ((atomic_read(&intelli_plug_active) == 0) ||
+		hotplug_suspended)
+		return;
+
 	INIT_DELAYED_WORK(&suspend_work, intelli_plug_suspend);
 	queue_delayed_work_on(0, susp_wq, &suspend_work, 
 				 msecs_to_jiffies(suspend_defer_time * 1000)); 
@@ -364,6 +362,9 @@ static void __intelli_plug_suspend(void)
 
 static void __intelli_plug_resume(void)
 {
+	if (atomic_read(&intelli_plug_active) == 0)
+		return;
+
 	flush_workqueue(susp_wq);
 	cancel_delayed_work_sync(&suspend_work);
 	queue_work_on(0, susp_wq, &resume_work);

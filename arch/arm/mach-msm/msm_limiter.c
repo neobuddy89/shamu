@@ -128,7 +128,7 @@ static void msm_limit_resume(struct work_struct *work)
 
 static void __msm_limit_suspend(void)
 {
-	if (!limit.limiter_enabled)
+	if (!limit.limiter_enabled || limit.suspended)
 		return;
 
 	INIT_DELAYED_WORK(&limit.suspend_work, msm_limit_suspend);

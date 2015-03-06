@@ -478,9 +478,6 @@ static void msm_hotplug_suspend(struct work_struct *work)
 {
 	int cpu;
 
-	if (!hotplug.msm_enabled)
-		return;
-
 	mutex_lock(&hotplug.msm_hotplug_mutex);
 	hotplug.suspended = 1;
 	hotplug.min_cpus_online_res = hotplug.min_cpus_online;
@@ -508,9 +505,6 @@ static void msm_hotplug_suspend(struct work_struct *work)
 static void __ref msm_hotplug_resume(struct work_struct *work)
 {
 	int cpu, required_reschedule = 0, required_wakeup = 0;
-
-	if (!hotplug.msm_enabled)
-		return;
 
 	if (hotplug.suspended) {
 		mutex_lock(&hotplug.msm_hotplug_mutex);
@@ -543,6 +537,9 @@ static void __ref msm_hotplug_resume(struct work_struct *work)
 
 static void __msm_hotplug_suspend(void)
 {
+	if (!hotplug.msm_enabled || hotplug.suspended)
+		return;
+
 	INIT_DELAYED_WORK(&hotplug.suspend_work, msm_hotplug_suspend);
 	queue_delayed_work_on(0, susp_wq, &hotplug.suspend_work, 
 				 msecs_to_jiffies(hotplug.suspend_defer_time * 1000)); 
@@ -550,6 +547,9 @@ static void __msm_hotplug_suspend(void)
 
 static void __msm_hotplug_resume(void)
 {
+	if (!hotplug.msm_enabled)
+		return;
+
 	flush_workqueue(susp_wq);
 	cancel_delayed_work_sync(&hotplug.suspend_work);
 	queue_work_on(0, susp_wq, &hotplug.resume_work);
