@@ -10,10 +10,18 @@
 #include <linux/jiffies.h>
 #include <linux/rbtree.h>
 #include <linux/ioprio.h>
+#include <linux/blktrace_api.h>
 #include "blk.h"
 
 #define VIOS_SCALE_SHIFT 10
 #define VIOS_SCALE (1 << VIOS_SCALE_SHIFT)
+
+#define VIOS_READ_SCALE (1)
+#define VIOS_WRITE_SCALE (1)
+#define VIOS_SYNC_SCALE (2)
+#define VIOS_ASYNC_SCALE (5)
+
+#define VIOS_PRIO_SCALE (5)
 
 struct fiops_rb_root {
 	struct rb_root rb;
@@ -24,15 +32,27 @@ struct fiops_rb_root {
 };
 #define FIOPS_RB_ROOT	(struct fiops_rb_root) { .rb = RB_ROOT}
 
+enum wl_prio_t {
+	IDLE_WORKLOAD = 0,
+	BE_WORKLOAD = 1,
+	RT_WORKLOAD = 2,
+	FIOPS_PRIO_NR,
+};
+
 struct fiops_data {
 	struct request_queue *queue;
 
-	struct fiops_rb_root service_tree;
+	struct fiops_rb_root service_tree[FIOPS_PRIO_NR];
 
 	unsigned int busy_queues;
 	unsigned int in_flight[2];
 
 	struct work_struct unplug_work;
+
+	unsigned int read_scale;
+	unsigned int write_scale;
+	unsigned int sync_scale;
+	unsigned int async_scale;
 };
 
 struct fiops_ioc {
@@ -50,13 +70,16 @@ struct fiops_ioc {
 	struct list_head fifo;
 
 	pid_t pid;
+	unsigned short ioprio;
+	enum wl_prio_t wl_type;
 };
 
-#define ioc_service_tree(ioc) (&((ioc)->fiopsd->service_tree))
+#define ioc_service_tree(ioc) (&((ioc)->fiopsd->service_tree[(ioc)->wl_type]))
 #define RQ_CIC(rq)		icq_to_cic((rq)->elv.icq)
 
 enum ioc_state_flags {
 	FIOPS_IOC_FLAG_on_rr = 0,	/* on round-robin busy list */
+	FIOPS_IOC_FLAG_prio_changed,	/* task priority has changed */
 };
 
 #define FIOPS_IOC_FNS(name)						\
@@ -74,7 +97,22 @@ static inline int fiops_ioc_##name(const struct fiops_ioc *ioc)	\
 }
 
 FIOPS_IOC_FNS(on_rr);
+FIOPS_IOC_FNS(prio_changed);
 #undef FIOPS_IOC_FNS
+
+#define fiops_log_ioc(fiopsd, ioc, fmt, args...)	\
+	blk_add_trace_msg((fiopsd)->queue, "ioc%d " fmt, (ioc)->pid, ##args)
+#define fiops_log(fiopsd, fmt, args...)	\
+	blk_add_trace_msg((fiopsd)->queue, "fiops " fmt, ##args)
+
+enum wl_prio_t fiops_wl_type(short prio_class)
+{
+	if (prio_class == IOPRIO_CLASS_RT)
+		return RT_WORKLOAD;
+	if (prio_class == IOPRIO_CLASS_BE)
+		return BE_WORKLOAD;
+	return IDLE_WORKLOAD;
+}
 
 static inline struct fiops_ioc *icq_to_cic(struct io_cq *icq)
 {
@@ -156,14 +194,19 @@ static void fiops_service_tree_add(struct fiops_data *fiopsd,
 	int left;
 
 	/* New added IOC */
-	if (RB_EMPTY_NODE(&ioc->rb_node))
-		vios = max_vios(service_tree->min_vios, ioc->vios);
-	else {
+	if (RB_EMPTY_NODE(&ioc->rb_node)) {
+		if (ioc->in_flight > 0)
+			vios = ioc->vios;
+		else
+			vios = max_vios(service_tree->min_vios, ioc->vios);
+	} else {
 		vios = ioc->vios;
 		/* ioc->service_tree might not equal to service_tree */
 		fiops_rb_erase(&ioc->rb_node, ioc->service_tree);
 		ioc->service_tree = NULL;
 	}
+
+	fiops_log_ioc(fiopsd, ioc, "service tree add, vios %lld", vios);
 
 	left = 1;
 	parent = NULL;
@@ -280,7 +323,17 @@ static void fiops_remove_request(struct request *rq)
 static u64 fiops_scaled_vios(struct fiops_data *fiopsd,
 	struct fiops_ioc *ioc, struct request *rq)
 {
-	return VIOS_SCALE;
+	int vios = VIOS_SCALE;
+
+	if (rq_data_dir(rq) == WRITE)
+		vios = vios * fiopsd->write_scale / fiopsd->read_scale;
+
+	if (!rq_is_sync(rq))
+		vios = vios * fiopsd->async_scale / fiopsd->sync_scale;
+
+	vios +=  vios * (ioc->ioprio - IOPRIO_NORM) / VIOS_PRIO_SCALE;
+
+	return vios;
 }
 
 /* return vios dispatched */
@@ -305,14 +358,19 @@ static int fiops_forced_dispatch(struct fiops_data *fiopsd)
 {
 	struct fiops_ioc *ioc;
 	int dispatched = 0;
+	int i;
 
-	while ((ioc = fiops_rb_first(&fiopsd->service_tree)) != NULL) {
-		while (!list_empty(&ioc->fifo)) {
-			fiops_dispatch_request(fiopsd, ioc);
-			dispatched++;
+	for (i = RT_WORKLOAD; i >= IDLE_WORKLOAD; i--) {
+		while (!RB_EMPTY_ROOT(&fiopsd->service_tree[i].rb)) {
+			ioc = fiops_rb_first(&fiopsd->service_tree[i]);
+
+			while (!list_empty(&ioc->fifo)) {
+				fiops_dispatch_request(fiopsd, ioc);
+				dispatched++;
+			}
+			if (fiops_ioc_on_rr(ioc))
+				fiops_del_ioc_rr(fiopsd, ioc);
 		}
-		if (fiops_ioc_on_rr(ioc))
-			fiops_del_ioc_rr(fiopsd, ioc);
 	}
 	return dispatched;
 }
@@ -320,10 +378,36 @@ static int fiops_forced_dispatch(struct fiops_data *fiopsd)
 static struct fiops_ioc *fiops_select_ioc(struct fiops_data *fiopsd)
 {
 	struct fiops_ioc *ioc;
+	struct fiops_rb_root *service_tree = NULL;
+	int i;
+	struct request *rq;
 
-	if (RB_EMPTY_ROOT(&fiopsd->service_tree.rb))
+	for (i = RT_WORKLOAD; i >= IDLE_WORKLOAD; i--) {
+		if (!RB_EMPTY_ROOT(&fiopsd->service_tree[i].rb)) {
+			service_tree = &fiopsd->service_tree[i];
+			break;
+		}
+	}
+
+	if (!service_tree)
 		return NULL;
-	ioc = fiops_rb_first(&fiopsd->service_tree);
+
+	ioc = fiops_rb_first(service_tree);
+
+	rq = rq_entry_fifo(ioc->fifo.next);
+	/*
+	 * we are the only async task and sync requests are in flight, delay a
+	 * moment. If there are other tasks coming, sync tasks have no chance
+	 * to be starved, don't delay
+	 */
+	if (!rq_is_sync(rq) && fiopsd->in_flight[1] != 0 &&
+			service_tree->count == 1) {
+		fiops_log_ioc(fiopsd, ioc,
+				"postpone async, in_flight async %d sync %d",
+				fiopsd->in_flight[0], fiopsd->in_flight[1]);
+		return NULL;
+	}
+
 	return ioc;
 }
 
@@ -332,6 +416,8 @@ static void fiops_charge_vios(struct fiops_data *fiopsd,
 {
 	struct fiops_rb_root *service_tree = ioc->service_tree;
 	ioc->vios += vios;
+
+	fiops_log_ioc(fiopsd, ioc, "charge vios %lld, new vios %lld", vios, ioc->vios);
 
 	if (RB_EMPTY_ROOT(&ioc->sort_list))
 		fiops_del_ioc_rr(fiopsd, ioc);
@@ -360,9 +446,48 @@ static int fiops_dispatch_requests(struct request_queue *q, int force)
 	return 1;
 }
 
+static void fiops_init_prio_data(struct fiops_ioc *cic)
+{
+	struct task_struct *tsk = current;
+	struct io_context *ioc = cic->icq.ioc;
+	int ioprio_class;
+
+	if (!fiops_ioc_prio_changed(cic))
+		return;
+
+	ioprio_class = IOPRIO_PRIO_CLASS(ioc->ioprio);
+	switch (ioprio_class) {
+	default:
+		printk(KERN_ERR "fiops: bad prio %x\n", ioprio_class);
+	case IOPRIO_CLASS_NONE:
+		/*
+		 * no prio set, inherit CPU scheduling settings
+		 */
+		cic->ioprio = task_nice_ioprio(tsk);
+		cic->wl_type = fiops_wl_type(task_nice_ioclass(tsk));
+		break;
+	case IOPRIO_CLASS_RT:
+		cic->ioprio = IOPRIO_PRIO_DATA(ioc->ioprio);
+		cic->wl_type = fiops_wl_type(IOPRIO_CLASS_RT);
+		break;
+	case IOPRIO_CLASS_BE:
+		cic->ioprio = IOPRIO_PRIO_DATA(ioc->ioprio);
+		cic->wl_type = fiops_wl_type(IOPRIO_CLASS_BE);
+		break;
+	case IOPRIO_CLASS_IDLE:
+		cic->wl_type = fiops_wl_type(IOPRIO_CLASS_IDLE);
+		cic->ioprio = 7;
+		break;
+	}
+
+	fiops_clear_ioc_prio_changed(cic);
+}
+
 static void fiops_insert_request(struct request_queue *q, struct request *rq)
 {
 	struct fiops_ioc *ioc = RQ_CIC(rq);
+
+	fiops_init_prio_data(ioc);
 
 	list_add_tail(&rq->queuelist, &ioc->fifo);
 
@@ -386,6 +511,9 @@ static void fiops_completed_request(struct request_queue *q, struct request *rq)
 
 	fiopsd->in_flight[rq_is_sync(rq)]--;
 	ioc->in_flight--;
+
+	fiops_log_ioc(fiopsd, ioc, "in_flight %d, busy queues %d",
+		ioc->in_flight, fiopsd->busy_queues);
 
 	if (fiopsd->in_flight[0] + fiopsd->in_flight[1] == 0)
 		fiops_schedule_dispatch(fiopsd);
@@ -486,21 +614,39 @@ static void fiops_kick_queue(struct work_struct *work)
 	spin_unlock_irq(q->queue_lock);
 }
 
-static void *fiops_init_queue(struct request_queue *q)
+static int fiops_init_queue(struct request_queue *q, struct elevator_type *e)
 {
 	struct fiops_data *fiopsd;
+	int i;
+	struct elevator_queue *eq;
+
+	eq = elevator_alloc(q, e);
+	if (!eq)
+		return -ENOMEM;
 
 	fiopsd = kzalloc_node(sizeof(*fiopsd), GFP_KERNEL, q->node);
-	if (!fiopsd)
-		return NULL;
+	if (!fiopsd) {
+		kobject_put(&eq->kobj);
+		return -ENOMEM;
+	}
+	eq->elevator_data = fiopsd;
 
 	fiopsd->queue = q;
+	spin_lock_irq(q->queue_lock);
+	q->elevator = eq;
+	spin_unlock_irq(q->queue_lock);
 
-	fiopsd->service_tree = FIOPS_RB_ROOT;
+	for (i = IDLE_WORKLOAD; i <= RT_WORKLOAD; i++)
+		fiopsd->service_tree[i] = FIOPS_RB_ROOT;
 
 	INIT_WORK(&fiopsd->unplug_work, fiops_kick_queue);
 
-	return fiopsd;
+	fiopsd->read_scale = VIOS_READ_SCALE;
+	fiopsd->write_scale = VIOS_WRITE_SCALE;
+	fiopsd->sync_scale = VIOS_SYNC_SCALE;
+	fiopsd->async_scale = VIOS_ASYNC_SCALE;
+
+	return 0;
 }
 
 static void fiops_init_icq(struct io_cq *icq)
@@ -515,7 +661,68 @@ static void fiops_init_icq(struct io_cq *icq)
 	ioc->fiopsd = fiopsd;
 
 	ioc->pid = current->pid;
+	fiops_mark_ioc_prio_changed(ioc);
 }
+
+/*
+ * sysfs parts below -->
+ */
+static ssize_t
+fiops_var_show(unsigned int var, char *page)
+{
+	return sprintf(page, "%d\n", var);
+}
+
+static ssize_t
+fiops_var_store(unsigned int *var, const char *page, size_t count)
+{
+	char *p = (char *) page;
+
+	*var = simple_strtoul(p, &p, 10);
+	return count;
+}
+
+#define SHOW_FUNCTION(__FUNC, __VAR)					\
+static ssize_t __FUNC(struct elevator_queue *e, char *page)		\
+{									\
+	struct fiops_data *fiopsd = e->elevator_data;			\
+	return fiops_var_show(__VAR, (page));				\
+}
+SHOW_FUNCTION(fiops_read_scale_show, fiopsd->read_scale);
+SHOW_FUNCTION(fiops_write_scale_show, fiopsd->write_scale);
+SHOW_FUNCTION(fiops_sync_scale_show, fiopsd->sync_scale);
+SHOW_FUNCTION(fiops_async_scale_show, fiopsd->async_scale);
+#undef SHOW_FUNCTION
+
+#define STORE_FUNCTION(__FUNC, __PTR, MIN, MAX)				\
+static ssize_t __FUNC(struct elevator_queue *e, const char *page, size_t count)	\
+{									\
+	struct fiops_data *fiopsd = e->elevator_data;			\
+	unsigned int __data;						\
+	int ret = fiops_var_store(&__data, (page), count);		\
+	if (__data < (MIN))						\
+		__data = (MIN);						\
+	else if (__data > (MAX))					\
+		__data = (MAX);						\
+	*(__PTR) = __data;						\
+	return ret;							\
+}
+STORE_FUNCTION(fiops_read_scale_store, &fiopsd->read_scale, 1, 100);
+STORE_FUNCTION(fiops_write_scale_store, &fiopsd->write_scale, 1, 100);
+STORE_FUNCTION(fiops_sync_scale_store, &fiopsd->sync_scale, 1, 100);
+STORE_FUNCTION(fiops_async_scale_store, &fiopsd->async_scale, 1, 100);
+#undef STORE_FUNCTION
+
+#define FIOPS_ATTR(name) \
+	__ATTR(name, S_IRUGO|S_IWUSR, fiops_##name##_show, fiops_##name##_store)
+
+static struct elv_fs_entry fiops_attrs[] = {
+	FIOPS_ATTR(read_scale),
+	FIOPS_ATTR(write_scale),
+	FIOPS_ATTR(sync_scale),
+	FIOPS_ATTR(async_scale),
+	__ATTR_NULL
+};
 
 static struct elevator_type iosched_fiops = {
 	.ops = {
@@ -534,6 +741,7 @@ static struct elevator_type iosched_fiops = {
 	},
 	.icq_size	=	sizeof(struct fiops_ioc),
 	.icq_align	=	__alignof__(struct fiops_ioc),
+	.elevator_attrs =	fiops_attrs,
 	.elevator_name =	"fiops",
 	.elevator_owner =	THIS_MODULE,
 };
