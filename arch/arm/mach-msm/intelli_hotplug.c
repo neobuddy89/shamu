@@ -388,6 +388,8 @@ static int state_notifier_callback(struct notifier_block *this,
 	return NOTIFY_OK;
 }
 #else
+static int prev_fb;
+
 static int fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data)
 {
@@ -398,20 +400,21 @@ static int fb_notifier_callback(struct notifier_block *self,
 		blank = evdata->data;
 		switch (*blank) {
 			case FB_BLANK_UNBLANK:
-				//display on
-				__intelli_plug_resume();
+				if (prev_fb == FB_BLANK_POWERDOWN) {
+					__intelli_plug_resume();
+					prev_fb = FB_BLANK_UNBLANK;
+				}
 				break;
 			case FB_BLANK_POWERDOWN:
-			case FB_BLANK_HSYNC_SUSPEND:
-			case FB_BLANK_VSYNC_SUSPEND:
-			case FB_BLANK_NORMAL:
-				//display off
-				__intelli_plug_suspend();
+				if (prev_fb == FB_BLANK_UNBLANK) {
+					__intelli_plug_suspend();
+					prev_fb = FB_BLANK_POWERDOWN;
+				}
 				break;
 		}
 	}
 
-	return 0;
+	return NOTIFY_OK;
 }
 #endif
 
