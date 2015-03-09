@@ -388,7 +388,7 @@ static int state_notifier_callback(struct notifier_block *this,
 	return NOTIFY_OK;
 }
 #else
-static int prev_fb;
+static int prev_fb = FB_BLANK_UNBLANK;
 
 static int fb_notifier_callback(struct notifier_block *self,
 				unsigned long event, void *data)
