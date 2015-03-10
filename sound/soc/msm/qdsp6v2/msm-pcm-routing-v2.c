@@ -46,6 +46,11 @@
 #define EC_PORT_ID_TERTIARY_MI2S_TX   3
 #define EC_PORT_ID_QUATERNARY_MI2S_TX 4
 
+#ifdef CONFIG_WAKE_GESTURES
+bool disable_s2w = false;
+static bool callend = false;
+#endif
+
 static struct mutex routing_lock;
 
 static int fm_switch_enable;
@@ -774,6 +779,20 @@ static void msm_pcm_routing_process_audio(u16 reg, u16 val, int set)
 			|| (msm_bedais[reg].port_id == VOICE_RECORD_TX))
 		voc_start_record(msm_bedais[reg].port_id, set, voc_session_id);
 
+#ifdef CONFIG_WAKE_GESTURES
+	if (msm_bedais[reg].active) {
+		if (!disable_s2w) {
+			disable_s2w = true;
+		}
+		callend = false;
+	} else if (disable_s2w) {
+		if (!callend) callend = true;
+		else {
+			callend = false;
+			disable_s2w = false;
+		}
+	}
+#endif
 	mutex_unlock(&routing_lock);
 }
 
