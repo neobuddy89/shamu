@@ -1,6 +1,6 @@
 #
 # Automatically generated file; DO NOT EDIT.
-# Linux/arm 3.10.71 Kernel Configuration
+# Linux/arm 3.10.72 Kernel Configuration
 #
 CONFIG_ARM=y
 CONFIG_ARM_HAS_SG_CHAIN=y
@@ -3313,7 +3313,7 @@ CONFIG_QPNP_USB_DETECT=y
 # CONFIG_MSM_AVTIMER is not set
 # CONFIG_SSM is not set
 CONFIG_QCA1530=y
-CONFIG_PFT=y
+# CONFIG_PFT is not set
 # CONFIG_MSM_SPSS is not set
 CONFIG_CLKDEV_LOOKUP=y
 CONFIG_HAVE_CLK_PREPARE=y
