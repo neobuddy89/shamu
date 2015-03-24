@@ -1214,7 +1214,7 @@ static int mdss_dsi_parse_panel_features(struct device_node *np,
 
 	pinfo->ulps_feature_enabled = of_property_read_bool(np,
 		"qcom,ulps-enabled");
-	pr_info("%s: ulps feature %s", __func__,
+	pr_info("%s: ulps feature %s\n", __func__,
 		(pinfo->ulps_feature_enabled ? "enabled" : "disabled"));
 
 	return 0;
@@ -1834,7 +1834,7 @@ int mdss_dsi_panel_init(struct device_node *node,
 		pinfo->cont_splash_enabled = false;
 	pinfo->cont_splash_esd_rdy = false;
 
-	pr_info("%s: Continuous splash %s", __func__,
+	pr_info("%s: Continuous splash %s\n", __func__,
 		pinfo->cont_splash_enabled ? "enabled" : "disabled");
 
 	ctrl_pdata->on = mdss_dsi_panel_on;
