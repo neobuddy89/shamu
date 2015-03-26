@@ -1663,6 +1663,17 @@ config LOCKUP_IPI_CALL_WDT
 
          Say N if unsure.
 
+config MEMTEST
+	bool "Memtest"
+	---help---
+	  This option adds a kernel parameter 'memtest', which allows memtest
+	  to be set.
+	        memtest=0, mean disabled; -- default
+	        memtest=1, mean do 1 test pattern;
+	        ...
+	        memtest=4, mean do 4 test patterns.
+	  If you are unsure how to answer this question, answer N.
+
 source "samples/Kconfig"
 
 source "lib/Kconfig.kgdb"
