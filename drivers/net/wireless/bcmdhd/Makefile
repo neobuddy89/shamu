@@ -148,6 +148,7 @@ ifneq ($(CONFIG_BCMDHD_SDIO),)
 
 # bcn_timeout
   DHDCFLAGS += -DCUSTOM_BCN_TIMEOUT_SETTING=5
+
   DHDCFLAGS += -DWLFC_STATE_PREALLOC
 endif
 
@@ -175,7 +176,7 @@ endif
 # Print 802.1X packets
   DHDCFLAGS += -DDHD_8021X_DUMP
 # Print DHCP packets
-  DHDCFLAGS += -DDHD_DHCP_DUMP
+#  DHDCFLAGS += -DDHD_DHCP_DUMP
 endif
 
 ifneq ($(CONFIG_BCM4339),)
