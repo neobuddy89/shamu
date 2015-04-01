@@ -27,7 +27,7 @@
 #include <linux/clk/msm-clock-generic.h>
 #include <soc/qcom/clock-local2.h>
 #include <soc/qcom/clock-krait.h>
-#include <mach/mmi_soc_info.h>
+#include <soc/qcom/mmi_soc_info.h>
 #include <linux/cpufreq.h>
 
 #include <asm/cputype.h>

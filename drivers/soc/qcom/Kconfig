@@ -226,6 +226,20 @@ config QCOM_EARLY_RANDOM
 	  may not be truly random. Select this option to make an early call
 	  to get some random data to put in the pool. If unsure, say N.
 
+config MMI_SOC_INFO
+	depends on ARCH_MSM
+	default n
+	bool "Motorola Mobility SOC Info"
+	help
+	  Provide mechanism to export MSM SOC info.
+
+config MMI_UNIT_INFO
+	depends on ARCH_MSM
+	default n
+	bool "Motorola Mobility Unit Info"
+	help
+	Provide mechanism to expose unit information to other cpu via smem.
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM

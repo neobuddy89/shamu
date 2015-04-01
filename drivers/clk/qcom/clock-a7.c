@@ -25,7 +25,7 @@
 #include <linux/of.h>
 #include <linux/clk/msm-clock-generic.h>
 #include <soc/qcom/clock-local2.h>
-#include <mach/mmi_soc_info.h>
+#include <soc/qcom/mmi_soc_info.h>
 
 #define UPDATE_CHECK_MAX_LOOPS 200
 
