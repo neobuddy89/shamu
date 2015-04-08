@@ -74,13 +74,12 @@ static int32_t aprv2_core_fn_q(struct apr_client_data *data, void *priv)
 {
 	uint32_t *payload1;
 
-	pr_debug("%s: core msg: payload len = %u, apr resp opcode = 0x%X\n",
-		__func__, data->payload_size, data->opcode);
-
 	if (!data) {
 		pr_err("%s: Invalid params\n", __func__);
 		return -EINVAL;
 	}
+	pr_debug("%s: core msg: payload len = %u, apr resp opcode = 0x%X\n",
+		__func__, data->payload_size, data->opcode);
 
 	switch (data->opcode) {
 
