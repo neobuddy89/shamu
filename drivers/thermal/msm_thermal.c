@@ -1632,7 +1632,9 @@ init_kthread:
 
 static __ref int do_freq_mitigation(void *data)
 {
+	long temp = 0;
 	int ret = 0;
+	bool skip_mitig = false;
 	uint32_t cpu = 0, max_freq_req = 0, min_freq_req = 0;
 	struct sched_param param = {.sched_priority = MAX_RT_PRIO-1};
 
@@ -1642,6 +1644,16 @@ static __ref int do_freq_mitigation(void *data)
 			&freq_mitigation_complete) != 0)
 			;
 		INIT_COMPLETION(freq_mitigation_complete);
+
+		ret = therm_get_temp(msm_thermal_info.sensor_id,
+			THERM_TSENS_ID, &temp);
+		if (ret)
+			pr_err("Unable to read TSENS sensor:%d\n",
+				msm_thermal_info.sensor_id);
+		else if (temp <= msm_thermal_info.limit_temp_degC)
+			skip_mitig = true;
+		else 
+			skip_mitig = false;
 
 		get_online_cpus();
 		for_each_possible_cpu(cpu) {
@@ -1653,6 +1665,9 @@ static __ref int do_freq_mitigation(void *data)
 
 			min_freq_req = max(min_freq_limit,
 					cpus[cpu].user_min_freq);
+
+			if (skip_mitig)
+				max_freq_req = UINT_MAX;
 
 			if ((max_freq_req == cpus[cpu].limited_max_freq)
 				&& (min_freq_req ==
