@@ -30,6 +30,10 @@
 #include <linux/tick.h>
 #include <trace/events/power.h>
 
+#ifdef CONFIG_MSM_LIMITER
+#include <linux/msm_thermal.h>
+#endif
+
 /**
  * The "cpufreq driver" - the arch- or hardware-dependent low
  * level driver of CPUFreq support, and its spinlock. This lock
@@ -2194,10 +2198,12 @@ int cpufreq_set_freq(unsigned int max_freq, unsigned int min_freq,
 		if (max_freq && max_freq >= policy->min) {
 			policy->user_policy.max = max_freq;
 			policy->max = max_freq;
+			msm_thermal_set_frequency(cpu, max_freq, true);
 		}
 		if (min_freq && min_freq <= policy->max) {
 			policy->user_policy.min = min_freq;
 			policy->min = min_freq;
+			msm_thermal_set_frequency(cpu, min_freq, false);
 		}
 		up_write(&policy->rwsem);
 
