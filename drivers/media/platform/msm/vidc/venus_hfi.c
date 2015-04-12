@@ -2843,13 +2843,13 @@ static int venus_hfi_check_core_registered(
 	return -EINVAL;
 }
 
-static void venus_hfi_process_sys_watchdog_timeout(
+static void __process_fatal_error(
 				struct venus_hfi_device *device)
 {
 	struct msm_vidc_cb_cmd_done cmd_done;
 	memset(&cmd_done, 0, sizeof(struct msm_vidc_cb_cmd_done));
 	cmd_done.device_id = device->device_id;
-	device->callback(SYS_WATCHDOG_TIMEOUT, &cmd_done);
+	device->callback(SYS_ERROR, &cmd_done);
 }
 
 static int venus_hfi_core_pc_prep(void *device)
@@ -2939,6 +2939,8 @@ static void venus_hfi_pm_hndlr(struct work_struct *work)
 	rc = venus_hfi_prepare_pc(device);
 	if (rc) {
 		dprintk(VIDC_ERR, "Failed to prepare for PC, rc : %d\n", rc);
+		venus_hfi_set_state(device, VENUS_STATE_DEINIT);
+		__process_fatal_error(device);
 		return;
 	}
 
@@ -3050,7 +3052,7 @@ static void venus_hfi_response_handler(struct venus_hfi_device *device)
 				dprintk(VIDC_ERR,
 					"SFR Message from FW : %s\n",
 						vsfr->rg_data);
-			venus_hfi_process_sys_watchdog_timeout(device);
+			__process_fatal_error(device);
 		}
 
 		while (!venus_hfi_iface_msgq_read(device, packet)) {
@@ -3798,7 +3800,8 @@ static void venus_hfi_unload_fw(void *dev)
 	if (device->resources.fw.cookie) {
 		flush_workqueue(device->vidc_workq);
 		cancel_delayed_work(&venus_hfi_pm_work);
-		flush_workqueue(device->venus_pm_workq);
+		if (device->state != VENUS_STATE_DEINIT)
+			flush_workqueue(device->venus_pm_workq);
 		subsystem_put(device->resources.fw.cookie);
 		venus_hfi_interface_queues_release(dev);
 		/* IOMMU operations need to be done before AXI halt.*/
