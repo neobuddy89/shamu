@@ -66,7 +66,7 @@
  *   - MS-Windows drivers sometimes emit undocumented requests.
  */
 
-static unsigned int rndis_dl_max_pkt_per_xfer = 3;
+static unsigned int rndis_dl_max_pkt_per_xfer = 5;
 module_param(rndis_dl_max_pkt_per_xfer, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(rndis_dl_max_pkt_per_xfer,
 	"Maximum packets per transfer for DL aggregation");
@@ -533,12 +533,6 @@ static void rndis_command_complete(struct usb_ep *ep, struct usb_request *req)
 			rndis->port.dl_max_xfer_size = buf->MaxTransferSize;
 			gether_update_dl_max_xfer_size(&rndis->port,
 					rndis->port.dl_max_xfer_size);
-
-			/* if SG is enabled multiple packets can be put
-			 * together too quickly. However, module param
-			 * is not honored.
-			 */
-			rndis->port.dl_max_pkts_per_xfer = 3;
 
 			gether_update_dl_max_pkts_per_xfer(&rndis->port,
 					 rndis->port.dl_max_pkts_per_xfer);
