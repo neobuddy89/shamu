@@ -57,13 +57,13 @@
 		android,ramoops-annotate-size = <0x800>;
 		android,ramoops-dump-oops = <0x1>;
 		android,ramoops-hole {
-			compatible = "qcom,msm-contig-mem";
+			compatible = "qcom,msm-mem-hole";
 			qcom,memblock-reserve = <0x3e9e0000 0x100000>;
 		};
 	};
 
 	kexec_hardboot-hole {
-		compatible = "qcom,msm-contig-mem";
+		compatible = "qcom,msm-mem-hole";
 		qcom,memblock-reserve = <0x3e9df000 0x1000>;
 	};
 
