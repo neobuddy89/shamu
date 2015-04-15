@@ -861,7 +861,11 @@ static void zram_bio_discard(struct zram *zram, u32 index,
 static int zram_bvec_rw(struct zram *zram, struct bio_vec *bvec, u32 index,
 			int offset, int rw)
 {
+	unsigned long start_time = jiffies;
 	int ret;
+
+	generic_start_io_acct(rw, bvec->bv_len >> SECTOR_SHIFT,
+			&zram->disk->part0);
 
 	if (rw == READ) {
 		atomic64_inc(&zram->stats.num_reads);
@@ -870,6 +874,8 @@ static int zram_bvec_rw(struct zram *zram, struct bio_vec *bvec, u32 index,
 		atomic64_inc(&zram->stats.num_writes);
 		ret = zram_bvec_write(zram, bvec, index, offset);
 	}
+
+	generic_end_io_acct(rw, &zram->disk->part0, start_time);
 
 	if (unlikely(ret)) {
 		if (rw == READ)
@@ -888,7 +894,8 @@ static void __zram_make_request(struct zram *zram, struct bio *bio)
 	struct bio_vec *bvec;
 
 	index = bio->bi_sector >> SECTORS_PER_PAGE_SHIFT;
-	offset = (bio->bi_sector & (SECTORS_PER_PAGE - 1)) << SECTOR_SHIFT;
+	offset = (bio->bi_sector &
+		  (SECTORS_PER_PAGE - 1)) << SECTOR_SHIFT;
 
 	if (unlikely(bio->bi_rw & REQ_DISCARD)) {
 		zram_bio_discard(zram, index, offset, bio);
