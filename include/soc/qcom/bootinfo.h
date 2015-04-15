@@ -26,6 +26,8 @@
 #define __ASMARM_BOOTINFO_H
 
 
+#if !defined(__KERNEL__) || defined(CONFIG_BOOTINFO)
+
 /*
  * These #defines are used for the bits in powerup_reason.
  */
@@ -70,6 +72,8 @@
 #define BOOTINFO_MAX_VAL_LEN    128
 #define BOOTINFO_BUF_SIZE       (BOOTINFO_MAX_NAME_LEN + \
 					3 + BOOTINFO_MAX_VAL_LEN)
+
+#endif
 
 
 #if defined(__KERNEL__)

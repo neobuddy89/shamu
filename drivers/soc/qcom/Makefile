@@ -31,6 +31,7 @@ obj-$(CONFIG_MSM_COMMON_LOG) += common_log.o
 obj-$(CONFIG_MSM_SMP2P) += smp2p.o smp2p_debug.o
 obj-$(CONFIG_MSM_SMP2P_TEST) += smp2p_loopback.o smp2p_test.o smp2p_spinlock_test.o
 obj-$(CONFIG_MSM_WATCHDOG_V2) += watchdog_v2.o
+obj-$(CONFIG_MSM_WATCHDOG_CTX_PRINT) += watchdog_cpu_ctx.o
 obj-$(CONFIG_MEM_SHARE_QMI_SERVICE)		+= memshare/
 obj-y		+= socinfo.o
 
@@ -51,6 +52,7 @@ endif
 obj-$(CONFIG_MSM_SYSMON_COMM) += sysmon.o
 
 obj-$(CONFIG_QCOM_EARLY_RANDOM)	+= early_random.o
+obj-$(CONFIG_BOOTINFO)		+= bootinfo.o
 obj-$(CONFIG_MMI_SOC_INFO) += mmi_soc_info.o
 obj-$(CONFIG_MMI_UNIT_INFO) += mmi-unit-info.o
 

@@ -24,20 +24,12 @@
 #include <linux/percpu.h>
 #include <linux/of.h>
 #include <linux/cpu.h>
+#include <linux/cpu_pm.h>
 #include <linux/platform_device.h>
 #include <soc/qcom/scm.h>
 #include <soc/qcom/memory_dump.h>
 #include <soc/qcom/watchdog.h>
-#ifdef CONFIG_MSM_WATCHDOG_CTX_PRINT
-#include <linux/mm.h>
-#include <linux/vmalloc.h>
-#include <linux/pstore_ram.h>
-#include <asm/bootinfo.h>
-#include <asm/stacktrace.h>
-#include <asm/traps.h>
-#include <asm/sections.h>
-#include <soc/qcom/socinfo.h>
-#endif
+#include "watchdog_cpu_ctx.h"
 
 #define MODULE_NAME "msm_watchdog"
 #define WDT0_ACCSCSSNBARK_INT 0
@@ -48,6 +40,8 @@
 #define WDT0_BARK_TIME	0x10
 #define WDT0_BITE_TIME	0x14
 
+#define WDOG_ABSENT	0
+
 #define MASK_SIZE		32
 #define SCM_SET_REGSAVE_CMD	0x2
 #define SCM_SVC_SEC_WDOG_DIS	0x7
@@ -56,10 +50,13 @@ static struct workqueue_struct *wdog_wq;
 static struct msm_watchdog_data *wdog_data;
 static struct msm_watchdog_data *g_wdog_dd;
 
+static int cpu_idle_pc_state[NR_CPUS];
+
 struct msm_watchdog_data {
 	unsigned int __iomem phys_base;
 	size_t size;
 	void __iomem *base;
+	void __iomem *wdog_absent_base;
 	struct device *dev;
 	unsigned int pet_time;
 	unsigned int bark_time;
@@ -69,8 +66,7 @@ struct msm_watchdog_data {
 	unsigned long long last_pet;
 	unsigned min_slack_ticks;
 	unsigned long long min_slack_ns;
-	phys_addr_t scm_regsave;		/* phys */
-	unsigned long scm_regsave_size;
+	void *scm_regsave;
 	cpumask_t alive_mask;
 	struct mutex disable_lock;
 	struct work_struct init_dogwork_struct;
@@ -79,11 +75,13 @@ struct msm_watchdog_data {
 	struct msm_watchdog_data __percpu **wdog_cpu_dd;
 	struct notifier_block panic_blk;
 	bool enabled;
+	phys_addr_t cpu_ctx_addr;
+	size_t cpu_ctx_size_percpu;
 };
 
 /*
  * On the kernel command line specify
- * msm_watchdog_v2.enable=1 to enable the watchdog
+ * watchdog_v2.enable=1 to enable the watchdog
  * By default watchdog is turned on
  */
 static int enable = 1;
@@ -91,11 +89,19 @@ module_param(enable, int, 0);
 
 /*
  * On the kernel command line specify
- * msm_watchdog_v2.WDT_HZ=<clock val in HZ> to set Watchdog
+ * watchdog_v2.WDT_HZ=<clock val in HZ> to set Watchdog
  * ticks. By default it is set to 32765.
  */
 static long WDT_HZ = 32765;
 module_param(WDT_HZ, long, 0);
+
+/*
+ * On the kernel command line specify
+ * watchdog_v2.ipi_opt_en=1 to enable the watchdog ipi ping
+ * optimization. By default it is turned off
+ */
+static int ipi_opt_en;
+module_param(ipi_opt_en, int, 0);
 
 static void pet_watchdog_work(struct work_struct *work);
 static void init_watchdog_work(struct work_struct *work);
@@ -279,8 +285,16 @@ static ssize_t wdog_disable_set(struct device *dev,
 			return count;
 		}
 		disable = 1;
-		ret = scm_call(SCM_SVC_BOOT, SCM_SVC_SEC_WDOG_DIS, &disable,
-						sizeof(disable), NULL, 0);
+		if (!is_scm_armv8()) {
+			ret = scm_call(SCM_SVC_BOOT, SCM_SVC_SEC_WDOG_DIS,
+				       &disable, sizeof(disable), NULL, 0);
+		} else {
+			struct scm_desc desc = {0};
+			desc.args[0] = 1;
+			desc.arginfo = SCM_ARGS(1);
+			ret = scm_call2(SCM_SIP_FNID(SCM_SVC_BOOT,
+					SCM_SVC_SEC_WDOG_DIS), &desc);
+		}
 		if (ret) {
 			dev_err(wdog_dd->dev,
 					"Failed to deactivate secure wdog\n");
@@ -290,7 +304,7 @@ static ssize_t wdog_disable_set(struct device *dev,
 		work_data.wdog_dd = wdog_dd;
 		init_completion(&work_data.complete);
 		INIT_WORK_ONSTACK(&work_data.work, wdog_disable_work);
-		queue_work_on(0, wdog_wq, &work_data.work);
+		queue_work(wdog_wq, &work_data.work);
 		wait_for_completion(&work_data.complete);
 		mutex_unlock(&wdog_dd->disable_lock);
 	} else {
@@ -350,8 +364,11 @@ static void ping_other_cpus(struct msm_watchdog_data *wdog_dd)
 	int cpu;
 	cpumask_clear(&wdog_dd->alive_mask);
 	smp_mb();
-	for_each_cpu(cpu, cpu_online_mask)
-		smp_call_function_single(cpu, keep_alive_response, wdog_dd, 1);
+	for_each_cpu(cpu, cpu_online_mask) {
+		if (!cpu_idle_pc_state[cpu])
+			smp_call_function_single(cpu, keep_alive_response,
+						 wdog_dd, 1);
+	}
 }
 
 static void pet_watchdog_work(struct work_struct *work)
@@ -376,9 +393,33 @@ static void pet_watchdog_work(struct work_struct *work)
 	/* Check again before scheduling *
 	 * Could have been changed on other cpu */
 	if (enable)
-		queue_delayed_work_on(0, wdog_wq,
+		queue_delayed_work(wdog_wq,
 				&wdog_dd->dogwork_struct, delay_time);
 }
+
+static int wdog_cpu_pm_notify(struct notifier_block *self,
+			      unsigned long action, void *v)
+{
+	int cpu;
+
+	cpu = raw_smp_processor_id();
+
+	switch (action) {
+	case CPU_PM_ENTER:
+		cpu_idle_pc_state[cpu] = 1;
+		break;
+	case CPU_PM_ENTER_FAILED:
+	case CPU_PM_EXIT:
+		cpu_idle_pc_state[cpu] = 0;
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block wdog_cpu_pm_nb = {
+	.notifier_call = wdog_cpu_pm_notify,
+};
 
 static int msm_watchdog_remove(struct platform_device *pdev)
 {
@@ -386,12 +427,15 @@ static int msm_watchdog_remove(struct platform_device *pdev)
 	struct msm_watchdog_data *wdog_dd =
 			(struct msm_watchdog_data *)platform_get_drvdata(pdev);
 
+	if (ipi_opt_en)
+		cpu_pm_unregister_notifier(&wdog_cpu_pm_nb);
+
 	mutex_lock(&wdog_dd->disable_lock);
 	if (enable) {
 		work_data.wdog_dd = wdog_dd;
 		init_completion(&work_data.complete);
 		INIT_WORK_ONSTACK(&work_data.work, wdog_disable_work);
-		queue_work_on(0, wdog_wq, &work_data.work);
+		queue_work(wdog_wq, &work_data.work);
 		wait_for_completion(&work_data.complete);
 	}
 	mutex_unlock(&wdog_dd->disable_lock);
@@ -449,733 +493,103 @@ static irqreturn_t wdog_ppi_bark(int irq, void *dev_id)
 	return wdog_bark_handler(irq, wdog_dd);
 }
 
-#ifdef CONFIG_MSM_WATCHDOG_CTX_PRINT
-
-#define TZBSP_SC_STATUS_NS_BIT		0x01
-#define TZBSP_SC_STATUS_WDT		0x02
-#define TZBSP_SC_STATUS_SGI		0x04
-#define TZBSP_SC_STATUS_WARM_BOOT	0x08
-#define TZBSP_SC_STATUS_DBI		0x10
-
-#define TZBSP_DUMP_CTX_MAGIC		0x44434151
-#define TZBSP_DUMP_CTX_VERSION2		2
-#define TZBSP_DUMP_CTX_VERSION3		3
-#define TZBSP_DUMP_CTX_VERSION4		4
-
-#define MSM_WDT_CTX_SIG			0x77647473
-#define MSM_WDT_CTX_REV			0x00010004
-
-#define NR_CPUS_MAX			4
-#define NR_CPUS_2			2
-#define NR_CPUS_4			4
-
-#define RET_STAGE_SHIFT			(28)
-#define RET_SECTION_SHIFT		(24)
-#define RET_ERR_SHIFT			(16)
-#define RET_MISC_SHIFT			(12)
-
-#define RET_TZ				(0xfu << RET_STAGE_SHIFT)
-#define RET_SBL2			(0xeu << RET_STAGE_SHIFT)
-
-#define ERR_NONE			(0xffu << RET_ERR_SHIFT)
-
-struct tzbsp_mon_cpu_ctx_s {
-	u32 mon_lr;
-	u32 mon_spsr;
-	u32 usr_r0;
-	u32 usr_r1;
-	u32 usr_r2;
-	u32 usr_r3;
-	u32 usr_r4;
-	u32 usr_r5;
-	u32 usr_r6;
-	u32 usr_r7;
-	u32 usr_r8;
-	u32 usr_r9;
-	u32 usr_r10;
-	u32 usr_r11;
-	u32 usr_r12;
-	u32 usr_r13;
-	u32 usr_r14;
-	u32 irq_spsr;
-	u32 irq_r13;
-	u32 irq_r14;
-	u32 svc_spsr;
-	u32 svc_r13;
-	u32 svc_r14;
-	u32 abt_spsr;
-	u32 abt_r13;
-	u32 abt_r14;
-	u32 und_spsr;
-	u32 und_r13;
-	u32 und_r14;
-	u32 fiq_spsr;
-	u32 fiq_r8;
-	u32 fiq_r9;
-	u32 fiq_r10;
-	u32 fiq_r11;
-	u32 fiq_r12;
-	u32 fiq_r13;
-	u32 fiq_r14;
-};
-
-struct tzbsp_cpu_ctx_s {
-	struct tzbsp_mon_cpu_ctx_s saved_ctx;
-	u32 mon_sp;
-	u32 wdog_pc;
-};
-
-struct tzbsp_neon_regs_s {
-	u64 d[32];
-};
-
-struct tzbsp_neon_cpu_ctx_s {
-	u32 fpsid;
-	u32 fpscr;
-	u32 fpexc;
-	u32 hole1;
-	struct tzbsp_neon_regs_s regs;
-};
-
-#define ARM_MAX_BPS_WPS 16
-
-struct tzbsp_dbg_bpt_s {
-	u32 bpt_value;
-	u32 bpt_control;
-};
-
-struct tzbsp_dbg_wpt_s {
-	u32 wpt_value;
-	u32 wpt_control;
-};
-
-struct tzbsp_dbg_cpu_ctx_s {
-	u32 dbgdidr;
-	u32 dbgscr;
-	struct tzbsp_dbg_bpt_s breakpoints[ARM_MAX_BPS_WPS];
-	struct tzbsp_dbg_wpt_s watchpoints[ARM_MAX_BPS_WPS];
-};
-
-/* Structure of the entire non-secure context dump buffer. Because TZ is single
- * entry only a single secure context is saved. */
-struct tzbsp_dump_buf_s0 {
-	u32 magic;
-	u32 version;
-	u32 cpu_count;
-};
-
-struct tzbsp_dump_buf_s2_v2 {
-	u32 magic;
-	u32 version;
-	u32 cpu_count;
-	u32 sc_status[NR_CPUS_2];
-	struct tzbsp_cpu_ctx_s sc_ns[NR_CPUS_2];
-	struct tzbsp_mon_cpu_ctx_s sec;
-	u32 wdt_sts[NR_CPUS_2];
-};
-
-struct tzbsp_dump_buf_s2_v4 {
-	struct tzbsp_dump_buf_s2_v2 v2;
-	u32 cpacr[NR_CPUS_2];
-	struct tzbsp_neon_cpu_ctx_s neon[NR_CPUS_2];
-	struct tzbsp_dbg_cpu_ctx_s dbg[NR_CPUS_2];
-};
-
-struct tzbsp_dump_buf_s4_v2 {
-	u32 magic;
-	u32 version;
-	u32 cpu_count;
-	u32 sc_status[NR_CPUS_4];
-	struct tzbsp_cpu_ctx_s sc_ns[NR_CPUS_4];
-	struct tzbsp_mon_cpu_ctx_s sec;
-	u32 wdt_sts[NR_CPUS_4];
-};
-
-struct tzbsp_dump_buf_s4_v4 {
-	struct tzbsp_dump_buf_s4_v2 v2;
-	u32 cpacr[NR_CPUS_4];
-	struct tzbsp_neon_cpu_ctx_s neon[NR_CPUS_4];
-	struct tzbsp_dbg_cpu_ctx_s dbg[NR_CPUS_4];
-};
-
-union tzbsp_dump_buf_s {
-	struct tzbsp_dump_buf_s0 s0;
-	struct tzbsp_dump_buf_s2_v2 s2v2;
-	struct tzbsp_dump_buf_s2_v4 s2v4;
-	struct tzbsp_dump_buf_s4_v2 s4v2;
-	struct tzbsp_dump_buf_s4_v4 s4v4;
-};
-
-struct msm_wdt_lnx_info {
-	u32 lpae;
-	u32 tsk_size;
-	u32 ti_tsk_offset;
-} __packed __aligned(4);
-
-struct msm_wdt_ctx_info {
-	struct msm_wdt_lnx_info lnx;
-	u32 size_tz;
-	u32 rev_tz;
-	u32 size;
-	u32 cpu_count;
-	u32 ret;
-	u32 rev;
-	u32 sig;
-} __packed __aligned(4);
-
-struct scm_buf {
-	u32 mot_cmd;
-	u32 ret_addr_phys;
-	u32 ret;
-	u32 unused;
-};
-
-struct msm_wdt_page1 {
-	union tzbsp_dump_buf_s tzbsp;
-	struct scm_buf scm_buf;
-	u8 spare[PAGE_SIZE - sizeof(union tzbsp_dump_buf_s)
-			- sizeof(struct scm_buf)
-			- sizeof(struct msm_wdt_ctx_info)];
-	struct msm_wdt_ctx_info cinfo;
-} __packed __aligned(PAGE_SIZE);
-
-struct msm_wdt_cpy {
-	u32 from;
-	u32 to;
-	u32 size;
-} __packed __aligned(4);
-
-#define LNX_STACK	0
-#define LNX_TASK	1
-#define LNX_CTX_AREAS	2
-
-struct msm_wdt_pcp {
-	u32 ret;
-	u32 stack_va;
-	struct msm_wdt_cpy jobs[LNX_CTX_AREAS];
-} __packed __aligned(4);
-
-struct msm_wdt_ctx {
-	struct msm_wdt_page1 p1;
-} __packed __aligned(PAGE_SIZE);
-
-/*
- *	---------	---------------------
- *	|	|	| tzbsp_dump_buf_s
- *	| page1 |	| padding
- *	|	|	| msm_wdt_ctx_info
- *	---------	---------------------
- *	| page2 |	| msm_wdt_pcp[0], ...
- *	| ...	|	| task_struct[0], ...
- *	| pagex |	| padding
- *	---------	---------------------
- *	| ...	|	| stack[0], ...
- *	|	|	|
- */
-
-#define MSM_WDT_CTX_PCP_SIZE	(sizeof(struct msm_wdt_pcp) * get_core_count())
-#define MSM_WDT_CTX_TSK_SIZE	(sizeof(struct task_struct) * get_core_count())
-
-#define MSM_WDT_CTX_MID_SIZE	(ALIGN((MSM_WDT_CTX_PCP_SIZE + \
-					MSM_WDT_CTX_TSK_SIZE), PAGE_SIZE))
-#define MSM_WDT_CTX_THREAD_SIZE	(THREAD_SIZE * get_core_count())
-#define MSM_WDT_CTX_SIZE	(sizeof(struct msm_wdt_ctx)	\
-				+ MSM_WDT_CTX_MID_SIZE \
-				+ MSM_WDT_CTX_THREAD_SIZE)
-
-#define MSMWDTD(fmt, args...) persistent_ram_annotation_append(fmt, ##args)
-
-static void msm_wdt_show_status(u32 sc_status, const char *label)
-{
-	if (!sc_status) {
-		MSMWDTD("%s: probably didn't finish dump.\n", label);
-		return;
-	}
-	MSMWDTD("%s: ", label);
-	if (sc_status & TZBSP_SC_STATUS_DBI) {
-		MSMWDTD("SDI: Secure watchdog bite. ");
-	} else {
-		MSMWDTD("TZ: Non-secure watchdog bite. ");
-		MSMWDTD("%sS ", (sc_status & TZBSP_SC_STATUS_NS_BIT) ?
-				"N" : "");
-		if (sc_status & TZBSP_SC_STATUS_WDT)
-			MSMWDTD("WDT ");
-		if (sc_status & TZBSP_SC_STATUS_SGI)
-			MSMWDTD("SGI ");
-		if (sc_status & TZBSP_SC_STATUS_WARM_BOOT)
-			MSMWDTD("WARM_BOOT ");
-	}
-	MSMWDTD("\n");
-}
-
-static const char stat_nam[] = TASK_STATE_TO_CHAR_STR;
-static void msm_wdt_show_task(struct task_struct *p,
-			struct thread_info *ti)
-{
-	unsigned state;
-
-	state = p->state ? __ffs(p->state) + 1 : 0;
-	MSMWDTD("%-15.15s %c", p->comm,
-		state < sizeof(stat_nam) - 1 ? stat_nam[state] : '?');
-	if (state == TASK_RUNNING)
-		MSMWDTD(" running  ");
-	else
-		MSMWDTD(" %08x ", ti->cpu_context.pc);
-	MSMWDTD("pid %6d tgid %6d 0x%08lx\n", task_pid_nr(p), task_tgid_nr(p),
-			(unsigned long)ti->flags);
-}
-
-static void msm_wdt_show_regs(struct tzbsp_cpu_ctx_s *cpu_ctx, int sec,
-				const char *label)
-{
-	struct tzbsp_mon_cpu_ctx_s *regs = &cpu_ctx->saved_ctx;
-	MSMWDTD("%s\n", label);
-	if (!sec) {
-		if ((cpu_ctx->wdog_pc >= (u32)_stext) &&
-				(cpu_ctx->wdog_pc <= (u32)_etext))
-			MSMWDTD("PC is at %pS <%08x>\n",
-				(void *)cpu_ctx->wdog_pc, cpu_ctx->wdog_pc);
-		else
-			MSMWDTD("PC is at %08x\n", cpu_ctx->wdog_pc);
-	}
-	MSMWDTD("\tr12: %08x  r11: %08x  r10: %08x  r9 : %08x  r8 : %08x\n",
-			regs->usr_r12, regs->usr_r11, regs->usr_r10,
-			regs->usr_r9, regs->usr_r8);
-	MSMWDTD("\tr7 : %08x  r6 : %08x  r5 : %08x  r4 : %08x\n",
-			regs->usr_r7, regs->usr_r6, regs->usr_r5,
-			regs->usr_r4);
-	MSMWDTD("\tr3 : %08x  r2 : %08x  r1 : %08x  r0 : %08x\n",
-			regs->usr_r3, regs->usr_r2, regs->usr_r1,
-			regs->usr_r0);
-	if (!sec)
-		MSMWDTD("MON:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->mon_lr, cpu_ctx->mon_sp, regs->mon_spsr);
-	else
-		MSMWDTD("MON:\tlr : %08x  spsr: %08x\n",
-			regs->mon_lr, regs->mon_spsr);
-	MSMWDTD("SVC:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->svc_r14, regs->svc_r13, regs->svc_spsr);
-	MSMWDTD("IRQ:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->irq_r14, regs->irq_r13, regs->irq_spsr);
-	MSMWDTD("ABT:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->abt_r14, regs->abt_r13, regs->abt_spsr);
-	MSMWDTD("UND:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->und_r14, regs->und_r13, regs->und_spsr);
-	MSMWDTD("FIQ:\tlr : %08x  sp : %08x  spsr : %08x\n",
-			regs->fiq_r14, regs->fiq_r13, regs->fiq_spsr);
-	MSMWDTD("\tr12: %08x  r11: %08x  r10: %08x  r9 : %08x  r8 : %08x\n",
-			regs->fiq_r12, regs->fiq_r11, regs->fiq_r10,
-			regs->fiq_r9, regs->fiq_r8);
-	MSMWDTD("USR:\tlr : %08x  sp : %08x\n",
-			regs->usr_r14, regs->usr_r13);
-}
-
-static void msm_wdt_show_raw_mem(unsigned long addr, int nbytes,
-			unsigned long old_addr, const char *label)
-{
-	int	i, j;
-	int	nlines;
-	u32	*p;
-
-	MSMWDTD("%s: %#lx: ", label, old_addr);
-	if (!virt_addr_valid(old_addr)) {
-		MSMWDTD("is not valid kernel address.\n");
-		return;
-	}
-	MSMWDTD("\n");
-
-	/*
-	 * round address down to a 32 bit boundary
-	 * and always dump a multiple of 32 bytes
-	 */
-	p = (u32 *)(addr & ~(sizeof(u32) - 1));
-	nbytes += (addr & (sizeof(u32) - 1));
-	nlines = (nbytes + 31) / 32;
-
-	for (i = 0; i < nlines; i++) {
-		/*
-		 * just display low 16 bits of address to keep
-		 * each line of the dump < 80 characters
-		 */
-		MSMWDTD("%04lx ", (unsigned long)old_addr & 0xffff);
-		for (j = 0; j < 8; j++) {
-			MSMWDTD(" %08x", *p);
-			++p;
-			old_addr += sizeof(*p);
-		}
-		MSMWDTD("\n");
-	}
-}
-
-static void msm_wdt_unwind_backtrace(struct tzbsp_mon_cpu_ctx_s *regs,
-			unsigned long addr, unsigned long stack)
-{
-	struct stackframe frame;
-	int offset;
-
-	if (!virt_addr_valid(addr)) {
-		MSMWDTD("%08lx is not valid kernel address.\n", addr);
-		return;
-	}
-	if ((regs->svc_r13 & ~(THREAD_SIZE - 1)) == addr) {
-		frame.fp = (regs->usr_r11 & (THREAD_SIZE - 1)) + stack;
-		frame.sp = (regs->svc_r13 & (THREAD_SIZE - 1)) + stack;
-		frame.lr = regs->svc_r14;
-		frame.pc = regs->mon_lr;
-	} else {
-		struct thread_info *ti = (struct thread_info *)stack;
-		frame.fp = ti->cpu_context.fp - addr + stack;
-		frame.sp = ti->cpu_context.sp - addr + stack;
-		frame.lr = 0;
-		frame.pc = ti->cpu_context.pc;
-	}
-	offset = (frame.sp - stack - 128) & ~(128 - 1);
-	msm_wdt_show_raw_mem(stack, 96, addr, "thread_info");
-	msm_wdt_show_raw_mem(stack + offset, THREAD_SIZE - offset,
-			addr + offset, "stack");
-	while (1) {
-		int urc;
-		unsigned long where = frame.pc;
-
-		urc = unwind_frame(&frame);
-		if (urc < 0)
-			break;
-		MSMWDTD("[<%08lx>] (%pS) from [<%08lx>] (%pS)\n", where,
-			(void *)where, frame.pc, (void *)frame.pc);
-		if (in_exception_text(where)) {
-			struct pt_regs *excep_regs =
-					(struct pt_regs *)(frame.sp);
-			if ((excep_regs->ARM_sp & ~(THREAD_SIZE - 1)) == addr) {
-				excep_regs->ARM_sp -= addr;
-				excep_regs->ARM_sp += stack;
-			}
-		}
-	}
-}
-
-static int msm_wdt_tzbsp_ctx_header_check(struct msm_wdt_ctx *ctx,
-						unsigned long phys)
-{
-	const int cpu_count = get_core_count();
-	int tzbsp_cpu_count = get_core_count();
-	struct tzbsp_dump_buf_s0 *tzctx = &ctx->p1.tzbsp.s0;
-
-	if (tzctx->magic != TZBSP_DUMP_CTX_MAGIC)
-		goto tzbsp_ctx_invalid;
-
-	switch (tzctx->version) {
-	case TZBSP_DUMP_CTX_VERSION2:
-	case TZBSP_DUMP_CTX_VERSION3:
-	case TZBSP_DUMP_CTX_VERSION4:
-		break;
-	default:
-		goto tzbsp_ctx_invalid;
-	}
-
-	if (tzbsp_cpu_count < 0) {
-		if ((tzctx->cpu_count != cpu_count) &&
-				(tzctx->cpu_count > NR_CPUS_MAX))
-			goto tzbsp_ctx_invalid;
-	} else if ((tzctx->cpu_count != tzbsp_cpu_count)) {
-		goto tzbsp_ctx_invalid;
-	}
-	return 0;
-
-tzbsp_ctx_invalid:
-	if (bi_powerup_reason() == PU_REASON_WDOG_AP_RESET) {
-		struct tzbsp_dump_buf_s0 *start = &ctx->p1.tzbsp.s0 + 1;
-		union tzbsp_dump_buf_s *end = &ctx->p1.tzbsp + 1;
-		u32 *tmp;
-
-		MSMWDTD("msm_wdt_ctx: tzbsp dump buffer mismatch.\n");
-		MSMWDTD("Expected: magic 0x%08x, cpu_count %d, ",
-			TZBSP_DUMP_CTX_MAGIC, (tzbsp_cpu_count < 0) ?
-			cpu_count : tzbsp_cpu_count);
-		MSMWDTD("version %d, %d, or %d\n", TZBSP_DUMP_CTX_VERSION2,
-			TZBSP_DUMP_CTX_VERSION3, TZBSP_DUMP_CTX_VERSION4);
-		MSMWDTD("Found:    magic 0x%08x, cpu_count %d, version %d\n",
-			tzctx->magic, tzctx->cpu_count, tzctx->version);
-
-		for (tmp = (u32 *)start; tmp < (u32 *)end; tmp++)
-			if (*tmp)
-				break;
-		if (tmp >= (u32 *)end)
-			MSMWDTD("\n*** Might be Secure watchdog bite ***\n\n");
-		else
-			MSMWDTD("*** Likely Bad Dump ***\n");
-	}
-	return -EINVAL;
-}
-
-static void msm_wdt_tzbsp_ctx_dump(struct msm_wdt_ctx *ctx)
-{
-	u32 *sc_status, *wdt_sts;
-	struct tzbsp_cpu_ctx_s *sc_ns;
-	char label[64];
-	const int tzctx_cpu_count = ctx->p1.tzbsp.s0.cpu_count;
-	const int cpu_count = get_core_count();
-	int i;
-
-	switch (tzctx_cpu_count) {
-	case NR_CPUS_2:
-		/* Common for v2, v3 and v4. */
-		sc_status = ctx->p1.tzbsp.s2v2.sc_status;
-		sc_ns = ctx->p1.tzbsp.s2v2.sc_ns;
-		wdt_sts = ctx->p1.tzbsp.s2v2.wdt_sts;
-		break;
-	case NR_CPUS_4:
-		sc_status = ctx->p1.tzbsp.s4v2.sc_status;
-		sc_ns = ctx->p1.tzbsp.s4v2.sc_ns;
-		wdt_sts = ctx->p1.tzbsp.s4v2.wdt_sts;
-		break;
-	default:
-		MSMWDTD("msm_wdt_ctx: unsupported cpu_count %d\n",
-			tzctx_cpu_count);
-		return;
-	}
-	MSMWDTD("sc_status: ");
-	for (i = 0; i < cpu_count; i++)
-		MSMWDTD("0x%x ", sc_status[i]);
-	MSMWDTD("\n");
-	for (i = 0; i < cpu_count; i++) {
-		snprintf(label, sizeof(label) - 1, "CPU%d", i);
-		msm_wdt_show_status(sc_status[i], label);
-	}
-	MSMWDTD("wdt_sts: ");
-	for (i = 0; i < cpu_count; i++)
-		MSMWDTD("0x%08x ", wdt_sts[i]);
-	MSMWDTD("\n");
-	for (i = 0; i < cpu_count; i++) {
-		snprintf(label, sizeof(label) - 1, "CPU%d nsec", i);
-		msm_wdt_show_regs(&sc_ns[i], 0, label);
-	}
-	msm_wdt_show_regs(&sc_ns[tzctx_cpu_count], 1, "sec");
-}
-
-static int msm_wdt_lnx_ctx_header_check(struct msm_wdt_ctx *ctx)
-{
-	if ((ctx->p1.cinfo.sig != MSM_WDT_CTX_SIG)
-		|| (ctx->p1.cinfo.rev_tz != MSM_WDT_CTX_REV)
-		|| (ctx->p1.cinfo.size_tz != MSM_WDT_CTX_SIZE)) {
-		MSMWDTD("msm_wdt_ctx: linux dump buffer mismatch.\n");
-		MSMWDTD("Expected: sig 0x%08x, ver 0x%08x size 0x%08x\n",
-			MSM_WDT_CTX_SIG, MSM_WDT_CTX_REV, MSM_WDT_CTX_SIZE);
-		MSMWDTD("Found:    sig 0x%08x, ver 0x%08x size 0x%08x\n",
-			ctx->p1.cinfo.sig, ctx->p1.cinfo.rev_tz,
-			ctx->p1.cinfo.size_tz);
-		return -EINVAL;
-	}
-	return 0;
-}
-
-static void msm_wdt_lnx_ctx_dump(struct msm_wdt_ctx *ctx)
-{
-	unsigned long stack_tmp = 0;
-	struct msm_wdt_pcp *pcp;
-	struct task_struct *task;
-	u8 (*stack)[THREAD_SIZE];
-	struct tzbsp_cpu_ctx_s *sc_ns;
-	const int tzctx_cpu_count = ctx->p1.tzbsp.s0.cpu_count;
-	const int cpu_count = get_core_count();
-	int i;
-
-	switch (tzctx_cpu_count) {
-	case NR_CPUS_2:
-		/* Common for v2, v3 and v4. */
-		sc_ns = ctx->p1.tzbsp.s2v2.sc_ns;
-		break;
-	case NR_CPUS_4:
-		sc_ns = ctx->p1.tzbsp.s4v2.sc_ns;
-		break;
-	default:
-		MSMWDTD("msm_wdt_ctx: unsupported cpu_count %d\n",
-			tzctx_cpu_count);
-		return;
-	}
-
-	MSMWDTD("\n");
-	MSMWDTD("ret 0x%08x\n", ctx->p1.cinfo.ret);
-	MSMWDTD("\n");
-	pcp = (struct msm_wdt_pcp *)(ctx + 1);
-	for (i = 0; i < cpu_count; i++) {
-		struct msm_wdt_cpy *job;
-		MSMWDTD("CPU%d: ", i);
-		MSMWDTD("ret 0x%x ", pcp[i].ret);
-		MSMWDTD("stack %08x ", pcp[i].stack_va);
-		job = &pcp[i].jobs[LNX_TASK];
-		MSMWDTD("%08x -> %08x (%x) ", job->from, job->to, job->size);
-		job = &pcp[i].jobs[LNX_STACK];
-		MSMWDTD("%08x -> %08x (%x)", job->from, job->to, job->size);
-		MSMWDTD("\n");
-	}
-	if ((ctx->p1.cinfo.ret != (RET_TZ | ERR_NONE)))
-		return;
-	MSMWDTD("\n");
-	task = (struct task_struct *)(pcp + cpu_count);
-	stack = (u8 (*)[THREAD_SIZE])(ALIGN((unsigned long)(task + cpu_count),
-					PAGE_SIZE));
-	if (!IS_ALIGNED((unsigned long)stack, THREAD_SIZE)) {
-		stack_tmp = __get_free_pages(GFP_KERNEL, THREAD_SIZE_ORDER);
-		if (!stack_tmp)
-			pr_err("Allocating temporary storage for stack failed.\n");
-	}
-	for (i = 0; i < cpu_count; i++) {
-		unsigned long addr, data;
-
-		if (pcp[i].ret != (RET_TZ | ERR_NONE))
-			continue;
-		MSMWDTD("CPU%d: ", i);
-		addr = pcp[i].stack_va;
-		if (stack_tmp) {
-			memcpy((void *)stack_tmp, stack[i], THREAD_SIZE);
-			data = stack_tmp;
-		} else {
-			data = (unsigned long)stack[i];
-		}
-		msm_wdt_show_task(&task[i], (struct thread_info *)data);
-		msm_wdt_unwind_backtrace(&sc_ns[i].saved_ctx, addr, data);
-		MSMWDTD("\n");
-	}
-	if (stack_tmp)
-		free_pages(stack_tmp, THREAD_SIZE_ORDER);
-}
-
-static void msm_wdt_ctx_print(struct msm_wdt_ctx *ctx, unsigned long phys)
-{
-	if (!msm_wdt_tzbsp_ctx_header_check(ctx, phys)) {
-		msm_wdt_tzbsp_ctx_dump(ctx);
-		if (!msm_wdt_lnx_ctx_header_check(ctx))
-			msm_wdt_lnx_ctx_dump(ctx);
-	}
-}
-
-static void msm_watchdog_ctx_lnx(struct msm_wdt_lnx_info *lnx)
-{
-	lnx->lpae = config_enabled(CONFIG_ARM_LPAE);
-	lnx->tsk_size = sizeof(struct task_struct);
-	lnx->ti_tsk_offset = offsetof(struct thread_info, task);
-}
-
-static void msm_wdt_ctx_reset(struct msm_wdt_ctx *ctx)
-{
-	memset(ctx, 0, MSM_WDT_CTX_SIZE);
-	ctx->p1.cinfo.sig = MSM_WDT_CTX_SIG;
-	ctx->p1.cinfo.rev = MSM_WDT_CTX_REV;
-	ctx->p1.cinfo.cpu_count = get_core_count();
-	ctx->p1.cinfo.size = MSM_WDT_CTX_SIZE;
-	msm_watchdog_ctx_lnx(&ctx->p1.cinfo.lnx);
-}
-
-static void msm_watchdog_alloc_buf(struct msm_watchdog_data *wdog_dd)
-{
-	struct platform_device *pdev = to_platform_device(wdog_dd->dev);
-	struct msm_wdt_ctx *ctx;
-	u32 offsets[2];
-	int ret;
-
-	BUILD_BUG_ON((sizeof(union tzbsp_dump_buf_s) + sizeof(struct scm_buf)
-		+ sizeof(struct msm_wdt_ctx_info)) > PAGE_SIZE);
-	BUILD_BUG_ON(CONFIG_NR_CPUS > NR_CPUS_MAX);
-
-	ret = of_property_read_u32_array(pdev->dev.of_node,
-				"qcom,memblock-reserve", offsets, 2);
-	if (ret) {
-		MSMWDTD("wdog: read memblock-reserve failed %d\n", ret);
-		dev_err(wdog_dd->dev, "read memblock-reserve failed %d\n", ret);
-		goto no_reservation;
-	}
-
-	if (offsets[1] < MSM_WDT_CTX_SIZE) {
-		MSMWDTD("wdog: mem reserve too small: %x/%x\n",
-				offsets[1], MSM_WDT_CTX_SIZE);
-		dev_err(wdog_dd->dev, "mem reserve too small: %x/%x\n",
-				offsets[1], MSM_WDT_CTX_SIZE);
-		goto no_reservation;
-	}
-	wdog_dd->scm_regsave = offsets[0];
-	wdog_dd->scm_regsave_size = MSM_WDT_CTX_SIZE;
-
-	ctx = persistent_ram_map(wdog_dd->scm_regsave, MSM_WDT_CTX_SIZE);
-
-	if (!ctx) {
-		MSMWDTD("wdog: cannot remap buffer: %016llx\n",
-				(unsigned long long)wdog_dd->scm_regsave);
-		dev_err(wdog_dd->dev, "cannot remap buffer: %016llx\n",
-				(unsigned long long)wdog_dd->scm_regsave);
-		return;
-	}
-	msm_wdt_ctx_print(ctx, wdog_dd->scm_regsave);
-	msm_wdt_ctx_reset(ctx);
-	persistent_ram_unmap(ctx, wdog_dd->scm_regsave, MSM_WDT_CTX_SIZE);
-	return;
-
-no_reservation:
-	ctx = (struct msm_wdt_ctx *)__get_free_page(GFP_KERNEL);
-	if (ctx) {
-		wdog_dd->scm_regsave = virt_to_phys(ctx);
-		wdog_dd->scm_regsave_size = PAGE_SIZE;
-	} else {
-		wdog_dd->scm_regsave = 0;
-		wdog_dd->scm_regsave_size = 0;
-	}
-	return;
-}
-
-EXPORT_COMPAT("qcom,msm-watchdog");
-
-#else /* CONFIG_MSM_WATCHDOG_CTX_PRINT undefined below */
-
-#define MSM_WDT_CTX_SIZE	PAGE_SIZE
-
-static void msm_watchdog_alloc_buf(struct msm_watchdog_data *wdog_dd)
-{
-	void *ctx_va = (void *)__get_free_page(GFP_KERNEL);
-	if (ctx_va) {
-		wdog_dd->scm_regsave = virt_to_phys(ctx_va);
-		wdog_dd->scm_regsave_size = PAGE_SIZE;
-	} else {
-		wdog_dd->scm_regsave = 0;
-		wdog_dd->scm_regsave_size = 0;
-	}
-}
-#endif /* CONFIG_MSM_WATCHDOG_CTX_PRINT */
-
 static void configure_bark_dump(struct msm_watchdog_data *wdog_dd)
 {
 	int ret;
-	struct msm_client_dump dump_entry;
+	struct msm_client_dump cpu_dump_entry;
+	struct msm_dump_entry dump_entry;
+	struct msm_dump_data *cpu_data;
+	int cpu;
+	void *cpu_buf;
 	struct {
 		unsigned addr;
 		int len;
 	} cmd_buf;
+	struct scm_desc desc = {0};
 
-	msm_watchdog_alloc_buf(wdog_dd);
-	if (wdog_dd->scm_regsave) {
-		cmd_buf.addr = wdog_dd->scm_regsave;
-		cmd_buf.len  = wdog_dd->scm_regsave_size;
-		ret = scm_call(SCM_SVC_UTIL, SCM_SET_REGSAVE_CMD,
-					&cmd_buf, sizeof(cmd_buf), NULL, 0);
-		if (ret)
-			pr_err("Setting register save address failed.\n"
+	if (MSM_DUMP_MAJOR(msm_dump_table_version()) == 1) {
+		wdog_dd->scm_regsave = (void *)__get_free_page(GFP_KERNEL);
+		if (wdog_dd->scm_regsave) {
+			desc.args[0] = cmd_buf.addr =
+					virt_to_phys(wdog_dd->scm_regsave);
+			desc.args[1] = cmd_buf.len  = PAGE_SIZE;
+			desc.arginfo = SCM_ARGS(2, SCM_RW, SCM_VAL);
+
+			if (!is_scm_armv8())
+				ret = scm_call(SCM_SVC_UTIL,
+					       SCM_SET_REGSAVE_CMD, &cmd_buf,
+					       sizeof(cmd_buf), NULL, 0);
+			else
+				ret = scm_call2(SCM_SIP_FNID(SCM_SVC_UTIL,
+						SCM_SET_REGSAVE_CMD), &desc);
+			if (ret)
+				pr_err("Setting register save address failed.\n"
 				       "Registers won't be dumped on a dog "
 				       "bite\n");
-		dump_entry.id = MSM_CPU_CTXT;
-		dump_entry.start_addr = wdog_dd->scm_regsave;
-		dump_entry.end_addr = dump_entry.start_addr +
-					wdog_dd->scm_regsave_size;
-		ret = msm_dump_tbl_register(&dump_entry);
-		if (ret)
-			pr_err("Setting cpu dump region failed\n"
+			cpu_dump_entry.id = MSM_CPU_CTXT;
+			cpu_dump_entry.start_addr =
+					virt_to_phys(wdog_dd->scm_regsave);
+			cpu_dump_entry.end_addr = cpu_dump_entry.start_addr +
+						  PAGE_SIZE;
+			ret = msm_dump_tbl_register(&cpu_dump_entry);
+			if (ret)
+				pr_err("Setting cpu dump region failed\n"
 				"Registers wont be dumped during cpu hang\n");
-	} else {
-		pr_err("Allocating register save space failed\n"
+		} else {
+			pr_err("Allocating register save space failed\n"
 			       "Registers won't be dumped on a dog bite\n");
-		/*
-		 * No need to bail if allocation fails. Simply don't
-		 * send the command, and the secure side will reset
-		 * without saving registers.
-		 */
+			/*
+			 * No need to bail if allocation fails. Simply don't
+			 * send the command, and the secure side will reset
+			 * without saving registers.
+			 */
+		}
+	} else {
+		phys_addr_t cpu_buf_phys;
+		size_t buf_size_percpu;
+
+		cpu_data = kzalloc(sizeof(struct msm_dump_data) *
+				   num_present_cpus(), GFP_KERNEL);
+		if (!cpu_data) {
+			pr_err("cpu dump data structure allocation failed\n");
+			goto out0;
+		}
+		if (wdog_dd->cpu_ctx_addr && wdog_dd->cpu_ctx_size_percpu) {
+			cpu_buf_phys = wdog_dd->cpu_ctx_addr;
+			buf_size_percpu = wdog_dd->cpu_ctx_size_percpu;
+		} else {
+			cpu_buf = kzalloc(MAX_CPU_CTX_SIZE * num_present_cpus(),
+					  GFP_KERNEL);
+			if (!cpu_buf) {
+				pr_err("cpu reg context space allocation failed\n");
+				goto out1;
+			}
+			cpu_buf_phys = virt_to_phys(cpu_buf);
+			buf_size_percpu = MAX_CPU_CTX_SIZE;
+		}
+
+		for_each_cpu(cpu, cpu_present_mask) {
+			cpu_data[cpu].addr = cpu_buf_phys +
+						cpu * buf_size_percpu;
+			cpu_data[cpu].len = buf_size_percpu;
+			dump_entry.id = MSM_DUMP_DATA_CPU_CTX + cpu;
+			dump_entry.addr = virt_to_phys(&cpu_data[cpu]);
+			ret = msm_dump_data_register(MSM_DUMP_TABLE_APPS,
+						     &dump_entry);
+			/*
+			 * Don't free the buffers in case of error since
+			 * registration may have succeeded for some cpus.
+			 */
+			if (ret)
+				pr_err("cpu %d reg dump setup failed\n", cpu);
+		}
 	}
+
+	return;
+out1:
+	kfree(cpu_data);
+out0:
+	return;
 }
 
 
@@ -1188,6 +602,13 @@ static void init_watchdog_work(struct work_struct *work)
 	int error;
 	u64 timeout;
 	int ret;
+
+	/*
+	 * Disable the watchdog for cluster 1 so that cluster 0 watchdog will
+	 * be mapped to the entire sub-system.
+	 */
+	if (wdog_dd->wdog_absent_base)
+		__raw_writel(2, wdog_dd->wdog_absent_base + WDOG_ABSENT);
 
 	if (wdog_dd->irq_ppi) {
 		wdog_dd->wdog_cpu_dd = alloc_percpu(struct msm_watchdog_data *);
@@ -1225,7 +646,7 @@ static void init_watchdog_work(struct work_struct *work)
 	atomic_notifier_chain_register(&panic_notifier_list,
 				       &wdog_dd->panic_blk);
 	mutex_init(&wdog_dd->disable_lock);
-	queue_delayed_work_on(0, wdog_wq, &wdog_dd->dogwork_struct,
+	queue_delayed_work(wdog_wq, &wdog_dd->dogwork_struct,
 			delay_time);
 	__raw_writel(1, wdog_dd->base + WDT0_EN);
 	__raw_writel(1, wdog_dd->base + WDT0_RST);
@@ -1236,6 +657,8 @@ static void init_watchdog_work(struct work_struct *work)
 		dev_err(wdog_dd->dev, "cannot create sysfs attribute\n");
 	if (wdog_dd->irq_ppi)
 		enable_percpu_irq(wdog_dd->bark_irq, 0);
+	if (ipi_opt_en)
+		cpu_pm_register_notifier(&wdog_cpu_pm_nb);
 	dev_info(wdog_dd->dev, "MSM Watchdog Initialized\n");
 	return;
 }
@@ -1258,14 +681,14 @@ static int msm_wdog_dt_to_pdata(struct platform_device *pdev,
 					struct msm_watchdog_data *pdata)
 {
 	struct device_node *node = pdev->dev.of_node;
-	struct resource *wdog_resource;
+	struct resource *res;
 	int ret;
 
-	wdog_resource = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!wdog_resource)
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "wdt-base");
+	if (!res)
 		return -ENODEV;
-	pdata->size = resource_size(wdog_resource);
-	pdata->phys_base = wdog_resource->start;
+	pdata->size = resource_size(res);
+	pdata->phys_base = res->start;
 	if (unlikely(!(devm_request_mem_region(&pdev->dev, pdata->phys_base,
 					       pdata->size, "msm-watchdog")))) {
 
@@ -1279,6 +702,20 @@ static int msm_wdog_dt_to_pdata(struct platform_device *pdev,
 		dev_err(&pdev->dev, "%s cannot map wdog register space\n",
 				__func__);
 		return -ENXIO;
+	}
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+					   "wdt-absent-base");
+	if (res) {
+		pdata->wdog_absent_base  = devm_ioremap(&pdev->dev, res->start,
+							 resource_size(res));
+		if (!pdata->wdog_absent_base) {
+			dev_err(&pdev->dev,
+				"cannot map wdog absent register space\n");
+			return -ENXIO;
+		}
+	} else {
+		dev_info(&pdev->dev, "wdog absent resource not present\n");
 	}
 
 	pdata->bark_irq = platform_get_irq(pdev, 0);
@@ -1328,14 +765,17 @@ static int msm_watchdog_probe(struct platform_device *pdev)
 	ret = msm_wdog_dt_to_pdata(pdev, wdog_dd);
 	if (ret)
 		goto err;
+
+	wdog_data = wdog_dd;
 	wdog_dd->dev = &pdev->dev;
 	platform_set_drvdata(pdev, wdog_dd);
+	msm_wdog_get_cpu_ctx(pdev, &wdog_dd->cpu_ctx_addr,
+				&wdog_dd->cpu_ctx_size_percpu);
 	cpumask_clear(&wdog_dd->alive_mask);
 	INIT_WORK(&wdog_dd->init_dogwork_struct, init_watchdog_work);
 	INIT_DELAYED_WORK(&wdog_dd->dogwork_struct, pet_watchdog_work);
 	g_wdog_dd = wdog_dd;
-	queue_work_on(0, wdog_wq, &wdog_dd->init_dogwork_struct);
-	wdog_data = wdog_dd;
+	queue_work(wdog_wq, &wdog_dd->init_dogwork_struct);
 	return 0;
 err:
 	destroy_workqueue(wdog_wq);

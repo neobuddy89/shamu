@@ -264,6 +264,8 @@ config MSM_WATCHDOG_CTX_PRINT
 	bool "Print context dump saved by secure mode watchdog handler"
 	default n
 	depends on MSM_WATCHDOG_V2
+	depends on MSM_MEMORY_DUMP_V2
+	depends on PSTORE_RAM_ANNOTATION_APPEND
 	help
 	  After enabling this option, kernel will reserve bigger buffer
 	  for secure mode watchdog handler to save info. And kernel will
@@ -417,6 +419,14 @@ config QCOM_EARLY_RANDOM
 	  process which means that any calls to get random numbers before then
 	  may not be truly random. Select this option to make an early call
 	  to get some random data to put in the pool. If unsure, say N.
+
+config BOOTINFO
+	bool "Boot Information Feature"
+	default n
+	help
+	  This feature provides access to certain boot information
+	  from both kernel context (via function call) and user
+	  context (via /proc/bootinfo).
 
 config MMI_SOC_INFO
 	depends on ARCH_MSM
