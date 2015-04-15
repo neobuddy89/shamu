@@ -39,6 +39,24 @@
 				<&msmgpio 74 0>, /* programming SCLK */
 				<&msmgpio 73 0>; /* programming SDAT */
 	};
+
+	memory {
+		wdog_cpuctx_mem: wdog_cpuctx_region@3eae0000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x0 0x3eae0000 0x0 0xb000>;
+			label = "wdog_cpuctx_mem";
+		};
+
+		tzlog_bck_mem: tzlog_bck_region@3eaeb000 {
+			linux,reserve-contiguous-region;
+			linux,reserve-region;
+			linux,remove-completely;
+			reg = <0x0 0x3eaeb000 0x0 0x1000>;
+			label = "tzlog_bck_mem";
+		};
+	};
 };
 
 &wlan_vreg {
@@ -325,11 +343,11 @@
 
 	qcom,wdt@f9017000 {
 		qcom,bark-time = <22000>;
-		qcom,memblock-reserve = <0x3eae0000 0xb000>;
+		linux,contiguous-region = <&wdog_cpuctx_mem>;
 	};
 
 	qcom,tz-log@fe805720 {
-		qcom,memblock-reserve = <0x3eaeb000 0x1000>;
+		linux,contiguous-region = <&tzlog_bck_mem>;
 	};
 
 	cci: qcom,cci@fda0C000 {
