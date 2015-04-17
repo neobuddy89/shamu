@@ -180,6 +180,7 @@ delete("system/etc/init.d/01_fstrim");
 delete("system/etc/init.d/02_cpuboost");
 delete("system/etc/init.d/03_cputweaks");
 delete("system/etc/init.d/96setenforce");
+delete("system/etc/init.d/99fstrim");
 
 package_extract_file("boot.img", "/dev/block/platform/msm_sdcc.1/by-name/boot");
 
