@@ -40,6 +40,7 @@
 #include <soc/qcom/rpm-smd.h>
 #include <soc/qcom/scm.h>
 #include <linux/sched/rt.h>
+#include <linux/suspend.h>
 #ifdef CONFIG_STATE_HELPER
 #include <linux/state_helper.h>
 #endif
@@ -1137,6 +1138,25 @@ static void __ref do_core_control(long temp)
 #endif
 }
 
+static int msm_thermal_suspend_callback(
+	struct notifier_block *nfb, unsigned long action, void *data)
+{
+	switch (action) {
+	case PM_POST_HIBERNATION:
+	case PM_POST_SUSPEND:
+		if (hotplug_task)
+			complete(&hotplug_notify_complete);
+		else
+			pr_debug("Hotplug task not initialized\n");
+		break;
+
+	default:
+		return NOTIFY_DONE;
+	}
+
+	return NOTIFY_OK;
+}
+
 /* Call with core_control_mutex locked */
 static int __ref update_offline_cores(int val)
 {
@@ -1173,12 +1193,13 @@ static int __ref update_offline_cores(int val)
 			if (cpu_online(cpu))
 				continue;
 			ret = cpu_up(cpu);
-			if (ret && ret == notifier_to_errno(NOTIFY_BAD))
+			if (ret && ret == notifier_to_errno(NOTIFY_BAD)) {
 				pr_debug("Onlining CPU%d is vetoed\n", cpu);
-			else if (ret)
+			} else if (ret) {
+				msm_thermal_info.cpus_offlined |= BIT(cpu);
 				pr_err("Unable to online CPU%d. err:%d\n",
-						cpu, ret);
-			else {
+					cpu, ret);
+			} else {
 				struct device *cpu_device = get_cpu_device(cpu);
 				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 				pr_debug("Onlined CPU%d\n", cpu);
@@ -1225,8 +1246,7 @@ static __ref int do_hotplug(void *data)
 			if (cpus[cpu].offline || cpus[cpu].user_offline)
 				mask |= BIT(cpu);
 		}
-		if (mask != msm_thermal_info.cpus_offlined)
-			update_offline_cores(mask);
+		update_offline_cores(mask);
 		mutex_unlock(&core_control_mutex);
 		sysfs_notify(cc_kobj, NULL, "cpus_offlined");
 	}
@@ -2699,6 +2719,7 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 	if (ret)
 		pr_err("cannot register cpufreq notifier. err:%d\n", ret);
 
+	pm_notifier(msm_thermal_suspend_callback, 0);
 	INIT_DELAYED_WORK(&check_temp_work, check_temp);
 	schedule_delayed_work(&check_temp_work, 0);
 
