@@ -1,18 +1,11 @@
 /*
- * drivers/cpufreq/cpufreq_impulse.c
+ * Impulse - Load Sensitive CPU Frequency Governor
  *
- * Copyright (C) 2010 Google, Inc.
+ * Copyright (c) 2014-2015, Pranav Vashi <neobuddy89@gmail.com>
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * Author: Mike Chan (mike@android.com)
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
  *
  */
 
@@ -729,7 +722,7 @@ static int cpufreq_impulse_notifier(
 	int cpu;
 	unsigned long flags;
 
-	if (val == CPUFREQ_POSTCHANGE) {
+	if (val == CPUFREQ_PRECHANGE) {
 		pcpu = &per_cpu(cpuinfo, freq->cpu);
 		if (!down_read_trylock(&pcpu->enable_sem))
 			return 0;
@@ -1648,7 +1641,7 @@ static void __exit cpufreq_impulse_exit(void)
 
 module_exit(cpufreq_impulse_exit);
 
-MODULE_AUTHOR("Mike Chan <mike@android.com>");
+MODULE_AUTHOR("Pranav Vashi <neobuddy89@gmail.com>");
 MODULE_DESCRIPTION("'cpufreq_impulse' - A cpufreq governor for "
 	"Latency sensitive workloads");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPLv2");
