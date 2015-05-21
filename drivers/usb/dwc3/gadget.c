@@ -376,6 +376,8 @@ int dwc3_send_gadget_generic_command(struct dwc3 *dwc, int cmd, u32 param)
 			dev_vdbg(dwc->dev, "Command Complete --> %d\n",
 					DWC3_DGCMD_STATUS(reg));
 			ret = 0;
+			if (DWC3_DGCMD_STATUS(reg))
+				ret = -EINVAL;
 			break;
 		}
 
