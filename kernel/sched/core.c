@@ -1260,8 +1260,9 @@ unsigned int max_capacity = 1024; /* max(rq->capacity) */
 unsigned int min_capacity = 1024; /* min(rq->capacity) */
 unsigned int max_load_scale_factor = 1024; /* max possible load scale factor */
 unsigned int max_possible_capacity = 1024; /* max(rq->max_possible_capacity) */
-unsigned int min_max_possible_capacity = 1024; /* min(max_possible_capacity) */
-unsigned int min_max_capacity_delta_pct;
+
+/* Mask of all CPUs that have  max_possible_capacity */
+cpumask_t mpc_mask = CPU_MASK_ALL;
 
 /* Window size (in ns) */
 __read_mostly unsigned int sched_ravg_window = 10000000;
@@ -2389,28 +2390,16 @@ static void __update_min_max_capacity(void)
 {
 	int i;
 	int max = 0, min = INT_MAX;
-	int max_pc = INT_MIN, min_pc = INT_MAX;
 
 	for_each_online_cpu(i) {
 		if (cpu_rq(i)->capacity > max)
 			max = cpu_rq(i)->capacity;
 		if (cpu_rq(i)->capacity < min)
 			min = cpu_rq(i)->capacity;
-
-		max_pc = max(cpu_rq(i)->max_possible_capacity, max_pc);
-		if (cpu_rq(i)->max_possible_capacity > 0)
-			min_pc = min(cpu_rq(i)->max_possible_capacity, min_pc);
 	}
 
 	max_capacity = max;
 	min_capacity = min;
-
-	max_possible_capacity = max_pc;
-	min_max_possible_capacity = min_pc;
-	BUG_ON(max_possible_capacity < min_max_possible_capacity);
-	min_max_capacity_delta_pct =
-	    div64_u64((u64)(max_possible_capacity - min_max_possible_capacity) *
-		      100, min_max_possible_capacity);
 }
 
 static void update_min_max_capacity(void)
@@ -2583,8 +2572,13 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 			mplsf = div_u64(((u64) rq->load_scale_factor) *
 				rq->max_possible_freq, rq->max_freq);
 
-			if (mpc > highest_mpc)
+			if (mpc > highest_mpc) {
 				highest_mpc = mpc;
+				cpumask_clear(&mpc_mask);
+				cpumask_set_cpu(i, &mpc_mask);
+			} else if (mpc == highest_mpc) {
+				cpumask_set_cpu(i, &mpc_mask);
+			}
 
 			if (mplsf > highest_mplsf)
 				highest_mplsf = mplsf;
@@ -2597,7 +2591,6 @@ static int cpufreq_notifier_policy(struct notifier_block *nb,
 	}
 
 	__update_min_max_capacity();
-
 	post_big_small_task_count_change(cpu_possible_mask);
 
 	return 0;
