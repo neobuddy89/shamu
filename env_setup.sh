@@ -58,18 +58,8 @@ export TMPFILE=`mktemp -t`;
 export KBUILD_BUILD_USER="NeoBuddy89";
 export KBUILD_BUILD_HOST="DragonCore";
 
-# system compiler
-# export CROSS_COMPILE=$PARENT_DIR/../toolchains/linaro-toolchain-4.8-2013.12/bin/arm-eabi-;
-# export CROSS_COMPILE=$PARENT_DIR/../toolchains/linaro-toolchain-4.7-2013.12/bin/arm-eabi-;
-# export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-eabi-4.8/bin/arm-eabi-;
-# export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-eabi-4.7/bin/arm-eabi-;
-
-# Use hammerhead optimized toolchain!
-# export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-hammerhead-linux-gnueabi-4.9.3/bin/arm-hammerhead-linux-gnueabi-;
-
-#export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-cortex_a15-linux-gnueabihf-linaro_4.9.3-2015.03/bin/arm-cortex_a15-linux-gnueabihf-;
-
-export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-eabi-4.9/bin/arm-eabi-;
+# hydra compiler
+export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-hydra-linux-gnueabi/bin/arm-eabi-;
 
 if [ ! -f ${CROSS_COMPILE}gcc ]; then
 	echo "${bldred}Cannot find GCC compiler ${CROSS_COMPILE}gcc${txtrst}";
