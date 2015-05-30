@@ -17,7 +17,7 @@
 
 static struct notifier_block notif;
 static int prev_fb = FB_BLANK_UNBLANK;
-bool use_fb_notifier = false;
+bool use_fb_notifier = true;
 module_param_named(use_fb_notifier, use_fb_notifier, bool, 0664);
 
 static BLOCKING_NOTIFIER_HEAD(state_notifier_list);
