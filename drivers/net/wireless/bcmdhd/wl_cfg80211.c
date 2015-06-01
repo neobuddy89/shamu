@@ -88,6 +88,7 @@ static struct bcm_cfg80211 *g_bcm_cfg = NULL;
 u32 wl_dbg_level = WL_DBG_ERR;
 
 #define MAX_WAIT_TIME 1500
+
 #define CHAN_INFO_LEN 128
 #define IBSS_IF_NAME "ibss%d"
 
@@ -3800,9 +3801,9 @@ wl_cfg80211_connect(struct wiphy *wiphy, struct net_device *dev,
 	u8* wpaie  = 0;
 	u8 chan_info[CHAN_INFO_LEN] = {0}, *chan_ptr;
 	u32 wpaie_len = 0;
+	u32 timeout;
 	u32 chan_cnt = 0, i, w_count = 0;
 	s32 wait_cnt;
-	u32 timeout;
 	s32 bssidx;
 	s32 err = 0;
 #ifdef ROAM_CHANNEL_CACHE
@@ -4150,7 +4151,6 @@ wl_cfg80211_disconnect(struct wiphy *wiphy, struct net_device *dev,
 		if (cfg->scan_request) {
 			wl_notify_escan_complete(cfg, dev, true, true);
 		}
-		wl_clr_drv_status(cfg, CONNECTING, dev);
 		wl_set_drv_status(cfg, DISCONNECTING, dev);
 		if (wl_get_drv_status(cfg, CONNECTING, dev)) {
 			/* in case of associating status, this will abort assoc procedure */
