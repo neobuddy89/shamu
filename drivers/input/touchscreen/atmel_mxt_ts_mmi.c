@@ -2509,7 +2509,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			mxt_sensor_state_config(data, SUSPEND_IDX);
 #ifdef CONFIG_STATE_NOTIFIER
 		if (!use_fb_notifier)
-			state_notifier_call_chain(STATE_NOTIFIER_SUSPEND, NULL);
+			state_suspend();
 #endif
 		break;
 #ifdef CONFIG_WAKE_GESTURES
@@ -2534,7 +2534,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		}
 #ifdef CONFIG_STATE_NOTIFIER
 		if (!use_fb_notifier)
-			state_notifier_call_chain(STATE_NOTIFIER_ACTIVE, NULL);
+			state_resume();
 #endif
 		break;
 
