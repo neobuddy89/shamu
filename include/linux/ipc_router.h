@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -113,7 +113,7 @@ struct msm_ipc_port {
 	struct list_head port_rx_q;
 	struct mutex port_rx_q_lock_lhb3;
 	char rx_ws_name[MAX_WS_NAME_SZ];
-	struct wakeup_source port_rx_ws;
+	struct wakeup_source *port_rx_ws;
 	wait_queue_head_t port_rx_wait_q;
 
 	int restart_state;
