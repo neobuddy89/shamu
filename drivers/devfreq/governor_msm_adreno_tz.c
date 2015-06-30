@@ -68,25 +68,6 @@ static DEFINE_SPINLOCK(tz_lock);
 /* Boolean to detect if pm has entered suspend mode */
 static bool suspended;
 
-/* Trap into the TrustZone, and call funcs there. */
-static int __secure_tz_reset_entry2(unsigned int *scm_data, u32 size_scm_data,
-					bool is_64)
-{
-	int ret;
-	/* sync memory before sending the commands to tz*/
-	__iowmb();
-	if (!is_64) {
-		spin_lock(&tz_lock);
-		ret = scm_call_atomic2(SCM_SVC_IO, TZ_RESET_ID, scm_data[0],
-					scm_data[1]);
-		spin_unlock(&tz_lock);
-	} else {
-		ret = scm_call(SCM_SVC_DCVS, TZ_RESET_ID_64, scm_data,
-				size_scm_data, NULL, 0);
-	}
-	return ret;
-}
-
 static int __secure_tz_update_entry3(unsigned int *scm_data, u32 size_scm_data,
 					int *val, u32 size_val, bool is_64)
 {
@@ -407,18 +388,20 @@ static int tz_resume(struct devfreq *devfreq)
 static int tz_suspend(struct devfreq *devfreq)
 {
 	struct devfreq_msm_adreno_tz_data *priv = devfreq->data;
-	unsigned int scm_data[2] = {0, 0};
+	struct devfreq_dev_profile *profile = devfreq->profile;
+	unsigned long freq;
 
 	suspended = true;
-
-	__secure_tz_reset_entry2(scm_data, sizeof(scm_data), priv->is_64);
 
 	priv->bin.total_time = 0;
 	priv->bin.busy_time = 0;
 	priv->bus.total_time = 0;
 	priv->bus.gpu_time = 0;
 	priv->bus.ram_time = 0;
-	return 0;
+	
+	freq = profile->freq_table[profile->max_state - 1];
+
+	return profile->target(devfreq->dev.parent, &freq, 0);
 }
 
 static int tz_handler(struct devfreq *devfreq, unsigned int event, void *data)
