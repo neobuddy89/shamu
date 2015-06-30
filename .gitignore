@@ -44,12 +44,13 @@ modules.builtin
 /System.map
 /Module.markers
 /Module.symvers
-boot.img
+boot*.img
 dt.img
 zImage
 zImage-dtb
 /tmp/*
 /out/*.zip
+/out/boot
 /arch/arm/mach-msm/smd_rpc_sym.c
 /arch/arm/crypto/aesbs-core.S
 

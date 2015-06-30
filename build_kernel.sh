@@ -28,15 +28,8 @@ echo "${bldcya}***** Setting up Environment *****${txtrst}";
 echo "${bldcya}***** Generating Ramdisk *****${txtrst}"
 echo "0" > $TMPFILE;
 
-(
 
-	# check xml-config for "NXTweaks"-app
-#	XML2CHECK="${INITRAMFS_SOURCE}/res/customconfig/customconfig.xml";
-#	xmllint --noout $XML2CHECK;
-#	if [ $? == 1 ]; then
-#        	echo "${bldred} WARNING for NXTweaks XML: $XML2CHECK ${txtrst}";
-#	fi;
-
+build_initramfs() {
 	# remove previous initramfs files
 	if [ -d $INITRAMFS_TMP ]; then
 		echo "${bldcya}***** Removing old temp initramfs_source *****${txtrst}";
@@ -50,19 +43,26 @@ echo "0" > $TMPFILE;
 		rm -rf $INITRAMFS_TMP/.git;
 	fi;
 	
-	# clear mercurial repository from tmp-initramfs
-	if [ -d $INITRAMFS_TMP/.hg ]; then
-		rm -rf $INITRAMFS_TMP/.hg;
-	fi;
-
 	# remove empty directory placeholders from tmp-initramfs
 	find $INITRAMFS_TMP -name EMPTY_DIRECTORY | parallel rm -rf {};
 
 	# remove more from from tmp-initramfs ...
 	rm -f $INITRAMFS_TMP/update* >> /dev/null;
 
-	./utilities/mkbootfs $INITRAMFS_TMP | gzip > ramdisk.gz
+	if [ $1 == 'AOSP' ]; then
+		cp -f $INITRAMFS_TMP/aosp/* $INITRAMFS_TMP/
+	fi;
+	rm -rf $INITRAMFS_TMP/aosp
 
+	./utilities/mkbootfs $INITRAMFS_TMP | gzip > ramdisk-$1.gz
+
+}
+
+(
+	build_initramfs CM
+	if [ -d $INITRAMFS_SOURCE/aosp ]; then
+		build_initramfs AOSP
+	fi;
 	echo "1" > $TMPFILE;
 	echo "${bldcya}***** Ramdisk Generation Completed Successfully *****${txtrst}"
 )&
@@ -83,6 +83,7 @@ else
 	rm -f $KERNELDIR/zImage-dtb >> /dev/null;
 	rm -f $KERNELDIR/boot.img >> /dev/null;
 	rm -rf $KERNELDIR/out/temp >> /dev/null;
+	rm -rf $KERNELDIR/out/boot >> /dev/null;
 fi;
 
 . $KERNELDIR/.config
@@ -92,7 +93,7 @@ echo "${bldcya}Building => Hydra ${GETVER} ${txtrst}";
 # wait for the successful ramdisk generation
 while [ $(cat ${TMPFILE}) == 0 ]; do
 	echo "${bldblu}Waiting for Ramdisk generation completion.${txtrst}";
-	sleep 2;
+	sleep 3;
 done;
 
 # make zImage
@@ -103,17 +104,28 @@ else
 	nice -n -15 make -j$NUMBEROFCPUS zImage-dtb
 fi;
 
+mkdir -p $KERNELDIR/out/boot;
+
+finalize_build() {
+	# copy all needed to out kernel folder
+	./utilities/mkbootimg --kernel zImage-dtb --cmdline 'console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=shamu msm_rtb.filter=0x37 ehci-hcd.park=3 utags.blkdev=/dev/block/platform/msm_sdcc.1/by-name/utags utags.backup=/dev/block/platform/msm_sdcc.1/by-name/utagsBackup coherent_pool=8M androidboot.selinux=permissive' --base 0x00000000 --pagesize 2048 --ramdisk_offset 0x02000000 --tags_offset 0x01E00000 --ramdisk ramdisk-$1.gz --output boot-$1.img
+
+	rm -f $KERNELDIR/out/boot.img >> /dev/null;
+	rm -f $KERNELDIR/out/boot/boot-$1.img >> /dev/null;
+	cp $KERNELDIR/boot-$1.img /$KERNELDIR/out/boot/
+}
+
 if [ -e $KERNELDIR/arch/arm/boot/zImage-dtb ]; then
 	echo "${bldcya}***** Final Touch for Kernel *****${txtrst}"
 	cp $KERNELDIR/arch/arm/boot/zImage-dtb $KERNELDIR/zImage-dtb;
+	rm -f $KERNELDIR/out/Hydra_* >> /dev/null;
 	
-	echo "--- Creating boot.img ---"
-	# copy all needed to out kernel folder
-	./utilities/mkbootimg --kernel zImage-dtb --cmdline 'console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=shamu msm_rtb.filter=0x37 ehci-hcd.park=3 utags.blkdev=/dev/block/platform/msm_sdcc.1/by-name/utags utags.backup=/dev/block/platform/msm_sdcc.1/by-name/utagsBackup coherent_pool=8M androidboot.selinux=permissive' --base 0x00000000 --pagesize 2048 --ramdisk_offset 0x02000000 --tags_offset 0x01E00000 --ramdisk ramdisk.gz --output boot.img
+	finalize_build CM
 
-	rm $KERNELDIR/out/boot.img >> /dev/null;
-	rm $KERNELDIR/out/Hydra_* >> /dev/null;
-	cp $KERNELDIR/boot.img /$KERNELDIR/out/
+	if [ -e $KERNELDIR/ramdisk-AOSP.gz ]; then	
+		finalize_build AOSP
+	fi;
+
 	cd $KERNELDIR/out/
 	zip -r Hydra_v${GETVER}-`date +"[%m-%d]-[%H-%M]"`.zip .
 	echo "${bldcya}***** Ready to Roar *****${txtrst}";
