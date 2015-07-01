@@ -16,7 +16,7 @@
 #include <linux/module.h>
 
 #define DEFAULT_SUSPEND_DEFER_TIME 10
-#define DEFAULT_USE_FB_NOTIFIER 1
+#define DEFAULT_USE_FB_NOTIFIER 0
 
 static struct notifier_block notif;
 static int prev_fb = FB_BLANK_UNBLANK;
