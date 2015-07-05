@@ -202,7 +202,8 @@ rm -f system/etc/init.d/99fstrim" >> /dev/null;
 cd /tmp
 unzip -o "$ZIP"
 
-if [ -e /system/framework/org.cyanogenmod.hardware.jar ]; then
+if [ -e /system/framework/org.cyanogenmod.platform.jar ] &&
+	[ -e /system/framework/org.cyanogenmod.hardware.jar ]; then
 	ui_print "CM System Detected"
 	dd if=/tmp/boot/boot-CM.img of=$PART bs=4096
 elif [ -e /tmp/boot/boot-AOSP.img ]; then
