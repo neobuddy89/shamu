@@ -116,11 +116,6 @@ static void set_dload_mode(int on)
 	dload_mode_enabled = on;
 }
 
-static bool get_dload_mode(void)
-{
-	return dload_mode_enabled;
-}
-
 static void enable_emergency_dload_mode(void)
 {
 	int ret;
@@ -173,11 +168,6 @@ static void enable_emergency_dload_mode(void)
 {
 	pr_err("dload mode is not enabled on target\n");
 }
-
-static bool get_dload_mode(void)
-{
-	return false;
-}
 #endif
 
 void msm_set_restart_mode(int mode)
@@ -223,11 +213,8 @@ static void msm_restart_prepare(const char *cmd)
 			(in_panic || restart_mode == RESTART_DLOAD));
 #endif
 
-	/* Hard reset the PMIC unless memory contents must be maintained. */
-	if (get_dload_mode() || (cmd != NULL && cmd[0] != '\0') || in_panic)
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
-	else
-		qpnp_pon_system_pwr_off(PON_POWER_OFF_HARD_RESET);
+	/* Maintain memory contents using warm reset. */
+	qpnp_pon_system_pwr_off(PON_POWER_OFF_WARM_RESET);
 
 	if (cmd != NULL) {
 		if (!strncmp(cmd, "bootloader", 10)) {
@@ -256,9 +243,11 @@ static void msm_restart_prepare(const char *cmd)
 		} else {
 			__raw_writel(0x77665501, restart_reason);
 		}
+#ifdef CONFIG_MSM_DLOAD_MODE
 	} else if (in_panic == 1) {
 		__raw_writel(0x77665505, restart_reason);
 		qpnp_pon_store_extra_reset_info(RESET_EXTRA_PANIC_REASON, 0xFF);
+#endif
 	} else {
 		__raw_writel(0x77665501, restart_reason);
 	}
