@@ -561,6 +561,9 @@ static int lpm_cpu_power_select(struct cpuidle_device *dev, int *index)
 
 		lvl_overhead_energy = pwr_params->energy_overhead;
 
+		if (i > 0 && suspend_in_progress)
+			continue;
+
 		if (latency_us < lvl_latency_us)
 			continue;
 
@@ -838,7 +841,7 @@ static int lpm_suspend_prepare(void)
 	return 0;
 }
 
-static void lpm_suspend_wake(void)
+static void lpm_suspend_end(void)
 {
 	struct timespec ts;
 
@@ -859,7 +862,7 @@ static const struct platform_suspend_ops lpm_suspend_ops = {
 	.enter = lpm_suspend_enter,
 	.valid = suspend_valid_only_mem,
 	.prepare_late = lpm_suspend_prepare,
-	.wake = lpm_suspend_wake,
+	.end = lpm_suspend_end,
 };
 
 static void setup_broadcast_timer(void *arg)
