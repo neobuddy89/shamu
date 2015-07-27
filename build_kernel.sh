@@ -59,6 +59,7 @@ build_initramfs() {
 }
 
 (
+	rm -f $KERNELDIR/ramdisk* >> /dev/null;
 	build_initramfs CM
 	if [ -d $INITRAMFS_SOURCE/aosp ]; then
 		build_initramfs AOSP
