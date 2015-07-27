@@ -184,7 +184,7 @@ socket_match(const struct sk_buff *skb, struct xt_action_param *par,
 
 		/* Ignore non-transparent sockets,
 		   if XT_SOCKET_TRANSPARENT is used */
-		if (info && info->flags & XT_SOCKET_TRANSPARENT)
+		if (info->flags & XT_SOCKET_TRANSPARENT)
 			transparent = ((sk->sk_state != TCP_TIME_WAIT &&
 					inet_sk(sk)->transparent) ||
 				       (sk->sk_state == TCP_TIME_WAIT &&
@@ -202,7 +202,11 @@ socket_match(const struct sk_buff *skb, struct xt_action_param *par,
 static bool
 socket_mt4_v0(const struct sk_buff *skb, struct xt_action_param *par)
 {
-	return socket_match(skb, par, NULL);
+	static struct xt_socket_mtinfo1 xt_info_v0 = {
+		.flags = 0,
+	};
+
+	return socket_match(skb, par, &xt_info_v0);
 }
 
 static bool
@@ -331,7 +335,7 @@ socket_mt6_v1(const struct sk_buff *skb, struct xt_action_param *par)
 
 		/* Ignore non-transparent sockets,
 		   if XT_SOCKET_TRANSPARENT is used */
-		if (info && info->flags & XT_SOCKET_TRANSPARENT)
+		if (info->flags & XT_SOCKET_TRANSPARENT)
 			transparent = ((sk->sk_state != TCP_TIME_WAIT &&
 					inet_sk(sk)->transparent) ||
 				       (sk->sk_state == TCP_TIME_WAIT &&
