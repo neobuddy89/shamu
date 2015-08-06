@@ -7779,7 +7779,7 @@ wl_cfg80211_reg_notifier(
 	struct bcm_cfg80211 *cfg = (struct bcm_cfg80211 *)wiphy_priv(wiphy);
 	int ret = 0;
 
-	if (!request || !cfg) {
+	if (!request || !cfg || !cfg->wdev) {
 		WL_ERR(("Invalid arg\n"));
 		return ;
 	}
