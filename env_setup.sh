@@ -41,12 +41,6 @@ if [ ! -e /usr/bin/adb ]; then
 	sudo apt-get install android-tools-adb
 fi
 
-# check if xmllint installed, if not install
-if [ ! -e /usr/bin/xmllint ]; then
-	echo "You must install 'xmllint' to continue.";
-	sudo apt-get install libxml2-utils
-fi
-
 # kernel
 export ARCH=arm;
 export SUB_ARCH=arm;
