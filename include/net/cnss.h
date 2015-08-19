@@ -87,6 +87,7 @@ extern int cnss_get_fw_files(struct cnss_fw_files *pfw_files);
 extern void cnss_flush_work(void *work);
 extern void cnss_flush_delayed_work(void *dwork);
 extern void cnss_get_monotonic_boottime(struct timespec *ts);
+extern void cnss_get_boottime(struct timespec *ts);
 extern int cnss_request_bus_bandwidth(int bandwidth);
 extern int cnss_get_sha_hash(const u8 *data, u32 data_len,
 					u8 *hash_idx, u8 *out);
