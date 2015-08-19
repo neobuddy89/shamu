@@ -87,6 +87,8 @@ extern int cnss_wlan_get_dfs_nol(void *info, u16 info_len);
 extern int cnss_wlan_register_driver(struct cnss_wlan_driver *driver);
 extern void cnss_wlan_unregister_driver(struct cnss_wlan_driver *driver);
 extern int cnss_get_fw_files(struct cnss_fw_files *pfw_files);
+extern int cnss_get_fw_files_for_target(struct cnss_fw_files *pfw_files,
+			u32 target_type, u32 target_version);
 extern void cnss_init_work(struct work_struct *work, work_func_t func);
 extern void cnss_init_delayed_work(struct delayed_work *work, work_func_t func);
 extern void cnss_flush_work(void *work);
