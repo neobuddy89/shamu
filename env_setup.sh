@@ -12,24 +12,26 @@ export bldblu=${txtbld}$(tput setaf 4) #  blue
 export bldcya=${txtbld}$(tput setaf 6) #  cyan
 export txtrst=$(tput sgr0)             #  Reset
 
-# location
-if [ "${1}" != "" ]; then
-	export KERNELDIR=`readlink -f ${1}`;
-else
-	export KERNELDIR=`readlink -f .`;
-fi;
+# Set Target
+TARGET=${1}
 
+export KERNELDIR=`readlink -f .`;
 export PARENT_DIR=`readlink -f ${KERNELDIR}/..`;
-export INITRAMFS_SOURCE=`readlink -f $PARENT_DIR/../ramdisks/shamu`;
+export INITRAMFS_SOURCE=`readlink -f $PARENT_DIR/../ramdisks/$TARGET`;
 export INITRAMFS_TMP=${KERNELDIR}/tmp/initramfs_source;
 
-# check if parallel installed, if not install
+# Kernel
+export ARCH=arm;
+export SUB_ARCH=arm;
+export KERNEL_CONFIG_SHAMU="hydra_shamu_defconfig";
+
+# Check if parallel installed, if not install
 if [ ! -e /usr/bin/parallel ]; then
 	echo "You must install 'parallel' to continue.";
 	sudo apt-get install parallel
 fi
 
-# check if ccache installed, if not install
+# Check if ccache installed, if not install
 if [ ! -e /usr/bin/ccache ]; then
 	echo "You must install 'ccache' to continue.";
 	sudo apt-get install ccache
@@ -41,18 +43,12 @@ if [ ! -e /usr/bin/adb ]; then
 	sudo apt-get install android-tools-adb
 fi
 
-# kernel
-export ARCH=arm;
-export SUB_ARCH=arm;
-export KERNEL_CONFIG="hydra_shamu_defconfig";
-
-# build script
+# Build script
 export USER=`whoami`;
-export TMPFILE=`mktemp -t`;
 export KBUILD_BUILD_USER="NeoBuddy89";
 export KBUILD_BUILD_HOST="DragonCore";
 
-# hydra compiler
+# Compiler
 export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-hydra-linux-gnueabi/bin/arm-eabi-;
 
 if [ ! -f ${CROSS_COMPILE}gcc ]; then
@@ -61,8 +57,9 @@ if [ ! -f ${CROSS_COMPILE}gcc ]; then
 	exit 1;
 fi
 
-if [ ! -f ${INITRAMFS_SOURCE}/init ]; then
-	echo "${bldred}Cannot find proper ramdisk at ${INITRAMFS_SOURCE}${txtrst}";
+if [ ! ${TARGET} == '' ] && 
+	[ ! -f ${INITRAMFS_SOURCE}/init ]; then
+	echo "${bldred}Cannot find proper ramdisk at ${INITRAMFS_SOURCE}. ${txtrst}";
 	echo "${bldcya}Please ensure you have RAMDISK at path mentioned in env_setup.sh and then you can continue.${txtrst}";
 	exit 1;
 fi

@@ -10,7 +10,7 @@ ui_print() {
 
 ui_print " "
 ui_print " "
-ui_print "Let the Chaos Begin..."
+ui_print "Hail Hydra..."
 ui_print " "
 ui_print " "
 
@@ -201,17 +201,39 @@ rm -f system/etc/init.d/99fstrim >> /dev/null;
 
 cd /tmp
 unzip -o "$ZIP"
+chmod 777 -R /tmp
 
-if [ -e /system/framework/org.cyanogenmod.platform.jar ] &&
-	[ -e /system/framework/org.cyanogenmod.hardware.jar ]; then
-	ui_print "CM System Detected"
-	dd if=/tmp/boot/boot-CM.img of=$PART bs=4096
-elif [ -e /tmp/boot/boot-AOSP.img ]; then
-	ui_print "AOSP System Detected"
-	dd if=/tmp/boot/boot-AOSP.img of=$PART bs=4096
-else
-	ui_print "Update Failed!"
-fi;
+dd if=$PART of=/tmp/boot.img
+
+cd /tmp
+/tmp/unpackbootimg -i /tmp/boot.img
+rm /tmp/boot.img
+rm /tmp/boot.img-zImage
+
+mkdir /tmp/ramdisk
+mkdir /tmp/boot/ramdisk
+
+mv /tmp/boot.img-ramdisk.gz /tmp/ramdisk/
+mv /tmp/boot/boot.img-ramdisk.gz /tmp/boot/ramdisk/
+
+cd /tmp/ramdisk
+gunzip -c /tmp/ramdisk/boot.img-ramdisk.gz | cpio -i
+cd /tmp/boot/ramdisk
+gunzip -c /tmp/boot/ramdisk/boot.img-ramdisk.gz | cpio -i
+
+rm /tmp/ramdisk/boot.img-ramdisk.gz
+rm /tmp/boot/ramdisk/boot.img-ramdisk.gz
+
+rm /tmp/boot/ramdisk/init.environ.rc
+cp -f /tmp/ramdisk/init.environ.rc /tmp/boot/ramdisk/init.environ.rc
+
+cd /tmp/boot/ramdisk/
+find . | cpio -o -H newc | gzip > /tmp/boot/boot.img-ramdisk.gz
+
+/tmp/mkbootimg --kernel /tmp/boot/zImage-dtb --ramdisk /tmp/boot/boot.img-ramdisk.gz --cmdline 'console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=shamu msm_rtb.filter=0x37 ehci-hcd.park=3 utags.blkdev=/dev/block/platform/msm_sdcc.1/by-name/utags utags.backup=/dev/block/platform/msm_sdcc.1/by-name/utagsBackup coherent_pool=8M androidboot.selinux=permissive sched_enable_hmp=1 lpm_levels.sleep_disabled=1' --base  0x00000000 --pagesize 2048 --ramdisk_offset 0x02000000 --tags_offset 0x01E00000 -o /tmp/boot/newboot.img
+
+dd if=/tmp/boot/newboot.img of=$PART bs=4096
+ui_print "Done! Let the Chaos Begin!"
 
 ui_print " "
 ui_print " "

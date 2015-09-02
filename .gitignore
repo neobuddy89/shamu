@@ -53,6 +53,7 @@ zImage-dtb
 /out/boot
 /arch/arm/mach-msm/smd_rpc_sym.c
 /arch/arm/crypto/aesbs-core.S
+/shamu
 
 #
 # Debian directory (make deb-pkg)

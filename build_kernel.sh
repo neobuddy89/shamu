@@ -19,17 +19,18 @@
 # Time of build startup
 res1=$(date +%s.%N)
 
-echo "${bldcya}***** Setting up Environment *****${txtrst}";
+TARGET="shamu"
 
-. ./env_setup.sh ${1} || exit 1;
+echo "${bldcya}***** Setting up Environment for $TARGET *****${txtrst}";
 
+. ./env_setup.sh $TARGET || exit 1;
+rm -rf $KERNELDIR/out/boot >> /dev/null;
+rm -rf $KERNELDIR/out/*.zip >> /dev/null;
+rm -f $KERNELDIR/shamu/ramdisk* >> /dev/null;
+mkdir -p $KERNELDIR/out/boot;
 
-# Generate Ramdisk
-echo "${bldcya}***** Generating Ramdisk *****${txtrst}"
-echo "0" > $TMPFILE;
-
-
-build_initramfs() {
+ramdisk_build() {
+	mkdir -p $KERNELDIR/$TARGET;
 	# remove previous initramfs files
 	if [ -d $INITRAMFS_TMP ]; then
 		echo "${bldcya}***** Removing old temp initramfs_source *****${txtrst}";
@@ -49,84 +50,49 @@ build_initramfs() {
 	# remove more from from tmp-initramfs ...
 	rm -f $INITRAMFS_TMP/update* >> /dev/null;
 
-	if [ $1 == 'AOSP' ]; then
-		cp -f $INITRAMFS_TMP/aosp/* $INITRAMFS_TMP/
-	fi;
-	rm -rf $INITRAMFS_TMP/aosp
+	./utilities/mkbootfs $INITRAMFS_TMP | gzip > $KERNELDIR/out/boot/boot.img-ramdisk.gz
 
-	./utilities/mkbootfs $INITRAMFS_TMP | gzip > ramdisk-$1.gz
-
+	echo "${bldcya}***** Ramdisk Generated for $TARGET *****${txtrst}"
 }
 
-(
-	rm -f $KERNELDIR/ramdisk* >> /dev/null;
-	build_initramfs CM
-	if [ -d $INITRAMFS_SOURCE/aosp ]; then
-		build_initramfs AOSP
-	fi;
-	echo "1" > $TMPFILE;
-	echo "${bldcya}***** Ramdisk Generation Completed Successfully *****${txtrst}"
-)&
+ramdisk_build $TARGET
 
-if [ ! -f $KERNELDIR/.config ]; then
-	echo "${bldcya}***** Clean Build Initiating *****${txtrst}";
-	cp $KERNELDIR/arch/arm/configs/$KERNEL_CONFIG .config;
-	make $KERNEL_CONFIG;
-else
-	echo "${bldcya}***** Dirty Build Initiating *****${txtrst}";	
+core_build() {
+	mkdir -p $KERNELDIR/$TARGET;
 	# remove previous files which should regenerate
-	rm -f $KERNELDIR/arch/arm/boot/*.dtb >> /dev/null;
-	rm -f $KERNELDIR/arch/arm/boot/*.cmd >> /dev/null;
-	rm -f $KERNELDIR/arch/arm/boot/zImage >> /dev/null;
-	rm -f $KERNELDIR/arch/arm/boot/zImage-dtb >> /dev/null;
-	rm -f $KERNELDIR/arch/arm/boot/Image >> /dev/null;
-	rm -f $KERNELDIR/zImage >> /dev/null;
-	rm -f $KERNELDIR/zImage-dtb >> /dev/null;
-	rm -f $KERNELDIR/boot.img >> /dev/null;
-	rm -rf $KERNELDIR/out/temp >> /dev/null;
-	rm -rf $KERNELDIR/out/boot >> /dev/null;
-fi;
+	rm -f $KERNELDIR/$TARGET/arch/arm/boot/*.dtb >> /dev/null;
+	rm -f $KERNELDIR/$TARGET/arch/arm/boot/*.cmd >> /dev/null;
+	rm -f $KERNELDIR/$TARGET/arch/arm/boot/zImage >> /dev/null;
+	rm -f $KERNELDIR/$TARGET/arch/arm/boot/zImage.gz-dtb >> /dev/null;
+	rm -f $KERNELDIR/$TARGET/arch/arm/boot/zImage-dtb >> /dev/null;
 
-. $KERNELDIR/.config
-GETVER=`grep 'Hydra-Kernel_v.*' $KERNELDIR/.config | sed 's/.*_.//g' | sed 's/".*//g'`
-echo "${bldcya}Building => Hydra ${GETVER} ${txtrst}";
+	cp $KERNELDIR/arch/arm/configs/$KERNEL_CONFIG_SHAMU $KERNELDIR/$TARGET/.config;
+	make O=$KERNELDIR/$TARGET $KERNEL_CONFIG_SHAMU;
 
-# wait for the successful ramdisk generation
-while [ $(cat ${TMPFILE}) == 0 ]; do
-	echo "${bldblu}Waiting for Ramdisk generation completion.${txtrst}";
-	sleep 3;
-done;
-
-# make zImage
-echo "${bldcya}***** Compiling kernel *****${txtrst}"
-if [ $USER != "root" ]; then
-	make -j$NUMBEROFCPUS zImage-dtb
-else
-	nice -n -15 make -j$NUMBEROFCPUS zImage-dtb
-fi;
-
-mkdir -p $KERNELDIR/out/boot;
-
-finalize_build() {
-	# copy all needed to out kernel folder
-	./utilities/mkbootimg --kernel zImage-dtb --cmdline 'console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=shamu msm_rtb.filter=0x37 ehci-hcd.park=3 utags.blkdev=/dev/block/platform/msm_sdcc.1/by-name/utags utags.backup=/dev/block/platform/msm_sdcc.1/by-name/utagsBackup coherent_pool=8M androidboot.selinux=permissive sched_enable_hmp=1 lpm_levels.sleep_disabled=1' --base 0x00000000 --pagesize 2048 --ramdisk_offset 0x02000000 --tags_offset 0x01E00000 --ramdisk ramdisk-$1.gz --output boot-$1.img
-
-	rm -f $KERNELDIR/out/boot.img >> /dev/null;
-	rm -f $KERNELDIR/out/boot/boot-$1.img >> /dev/null;
-	cp $KERNELDIR/boot-$1.img /$KERNELDIR/out/boot/
-}
-
-if [ -e $KERNELDIR/arch/arm/boot/zImage-dtb ]; then
-	echo "${bldcya}***** Final Touch for Kernel *****${txtrst}"
-	cp $KERNELDIR/arch/arm/boot/zImage-dtb $KERNELDIR/zImage-dtb;
-	rm -f $KERNELDIR/out/Hydra_* >> /dev/null;
-	
-	finalize_build CM
-
-	if [ -e $KERNELDIR/ramdisk-AOSP.gz ]; then	
-		finalize_build AOSP
+	. $KERNELDIR/$TARGET/.config
+	GETVER=`grep 'Hydra-Kernel_v.*' $KERNELDIR/$TARGET/.config | sed 's/.*_.//g' | sed 's/".*//g'`
+	echo "${bldcya}Building => Hydra ${GETVER} for $TARGET ${txtrst}";
+	if [ $USER != "root" ]; then
+		make O=$KERNELDIR/$TARGET -j$NUMBEROFCPUS
+	else
+		nice -n -15 make O=$KERNELDIR/$TARGET -j$NUMBEROFCPUS
 	fi;
 
+	if [ ! -e $KERNELDIR/$TARGET/arch/arm/boot/zImage-dtb ]; then
+		echo "${bldred}Kernel STUCK in BUILD!${txtrst}"
+		exit 1;
+	fi;
+
+	# copy all needed to out kernel folder
+	cp -f $KERNELDIR/$TARGET/arch/arm/boot/zImage-dtb $KERNELDIR/out/boot/zImage-dtb
+}
+
+core_build
+
+if [ -e $KERNELDIR/out/boot/zImage-dtb ]; then
+	echo "${bldcya}***** Final Touch for Kernel *****${txtrst}"
+	rm -f $KERNELDIR/out/Hydra*.zip >> /dev/null;
+	
 	cd $KERNELDIR/out/
 	zip -r Hydra_v${GETVER}-`date +"[%m-%d]-[%H-%M]"`.zip .
 	echo "${bldcya}***** Ready to Roar *****${txtrst}";
@@ -145,7 +111,7 @@ if [ -e $KERNELDIR/arch/arm/boot/zImage-dtb ]; then
 			sleep 1;
 			ADB_STATUS=`adb get-state` >> /dev/null;
 		done
-		adb push $KERNELDIR/out/Hydra_v*.zip /sdcard/
+		adb push $KERNELDIR/out/Hydra*.zip /storage/sdcard0/
 		while [ "$reboot_recovery" != "y" ] && [ "$reboot_recovery" != "n" ] && [ "$reboot_recovery" != "Y" ] && [ "$reboot_recovery" != "N" ]
 		do
 			read -p "${bldblu}Reboot to recovery?${txtrst}${blu} (y/n)${txtrst}" reboot_recovery;
@@ -158,4 +124,5 @@ if [ -e $KERNELDIR/arch/arm/boot/zImage-dtb ]; then
 	exit 0;
 else
 	echo "${bldred}Kernel STUCK in BUILD!${txtrst}"
+	exit 1;
 fi;
