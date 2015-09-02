@@ -10947,7 +10947,7 @@ void wl_cfg80211_detach(struct bcm_cfg80211 *cfg)
 	wl_add_remove_pm_enable_work(cfg, FALSE, WL_HANDLER_DEL);
 
 #if defined(COEX_DHCP)
-	wl_cfg80211_btcoex_deinit();
+	wl_cfg80211_btcoex_deinit(cfg->btcoex_info);
 	cfg->btcoex_info = NULL;
 #endif
 
