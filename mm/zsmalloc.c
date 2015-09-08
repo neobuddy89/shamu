@@ -247,7 +247,8 @@ struct mapping_area {
 
 #ifdef CONFIG_ZPOOL
 
-static void *zs_zpool_create(char *name, gfp_t gfp, struct zpool_ops *zpool_ops,
+static void *zs_zpool_create(char *name, gfp_t gfp,
+			     const struct zpool_ops *zpool_ops,
 			     struct zpool *zpool)
 {
 	return zs_create_pool(name, gfp);
