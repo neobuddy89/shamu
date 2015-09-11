@@ -23,6 +23,7 @@
 #include <linux/spinlock.h>
 #include <net/pkt_sched.h>
 #include <linux/atomic.h>
+#include <linux/net_map.h>
 #include "rmnet_data_config.h"
 #include "rmnet_data_handlers.h"
 #include "rmnet_data_private.h"
@@ -214,7 +215,7 @@ static int _rmnet_vnd_do_qos_ioctl(struct net_device *dev,
 				   int cmd)
 {
 	struct rmnet_vnd_private_s *dev_conf;
-	int rc;
+	int rc, qdisc_len = 0;
 	struct rmnet_ioctl_data_s ioctl_data;
 	rc = 0;
 	dev_conf = (struct rmnet_vnd_private_s *) netdev_priv(dev);
@@ -248,7 +249,9 @@ static int _rmnet_vnd_do_qos_ioctl(struct net_device *dev,
 			rc = -EFAULT;
 			break;
 		}
-		tc_qdisc_flow_control(dev, ioctl_data.u.tcm_handle, 1);
+		qdisc_len = tc_qdisc_flow_control(dev,
+						  ioctl_data.u.tcm_handle, 1);
+		trace_rmnet_fc_qmi(ioctl_data.u.tcm_handle, qdisc_len, 1);
 		break;
 
 	case RMNET_IOCTL_FLOW_DISABLE:
@@ -258,7 +261,9 @@ static int _rmnet_vnd_do_qos_ioctl(struct net_device *dev,
 			rc = -EFAULT;
 		break;
 		}
-		tc_qdisc_flow_control(dev, ioctl_data.u.tcm_handle, 0);
+		qdisc_len = tc_qdisc_flow_control(dev,
+						  ioctl_data.u.tcm_handle, 0);
+		trace_rmnet_fc_qmi(ioctl_data.u.tcm_handle, qdisc_len, 0);
 		break;
 
 	default:
@@ -278,10 +283,13 @@ struct rmnet_vnd_fc_work {
 static void _rmnet_vnd_wq_flow_control(struct work_struct *work)
 {
 	struct rmnet_vnd_fc_work *fcwork;
+	int qdisc_len = 0;
 	fcwork = (struct rmnet_vnd_fc_work *)work;
 
 	rtnl_lock();
-	tc_qdisc_flow_control(fcwork->dev, fcwork->tc_handle, fcwork->enable);
+	qdisc_len = tc_qdisc_flow_control(fcwork->dev, fcwork->tc_handle,
+				     fcwork->enable);
+	trace_rmnet_fc_map(fcwork->tc_handle, qdisc_len, fcwork->enable);
 	rtnl_unlock();
 
 	LOGL("[%s] handle:%08X enable:%d",
@@ -576,6 +584,11 @@ int rmnet_vnd_create_dev(int id, struct net_device **new_device,
 		LOGE("Failed to to allocate netdev for id %d", id);
 		*new_device = 0;
 		return -EINVAL;
+	}
+
+	if (!prefix) {
+		/* Configuring UL checksum offload on rmnet_data interfaces */
+		dev->hw_features = NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
 	}
 
 	rc = register_netdevice(dev);
