@@ -928,14 +928,14 @@ rtt_handle_config_general(wl_proxd_session_id_t session_id, wl_proxd_tlv_t **p_t
 		if (p_config_param_info != NULL) {
 			switch (p_config_param_info->tlvid)	{
 			case WL_PROXD_TLV_ID_BSS_INDEX:
-			case WL_PROXD_TLV_ID_FTM_RETRIES:
-			case WL_PROXD_TLV_ID_FTM_REQ_RETRIES:
 				p_src_data = &p_config_param_info->data8;
 				src_data_size = sizeof(uint8);
 				break;
 			case WL_PROXD_TLV_ID_BURST_NUM_FTM: /* uint16 */
 			case WL_PROXD_TLV_ID_NUM_BURST:
+			case WL_PROXD_TLV_ID_FTM_RETRIES:
 			case WL_PROXD_TLV_ID_RX_MAX_BURST:
+			case WL_PROXD_TLV_ID_FTM_REQ_RETRIES:
 				p_src_data = &p_config_param_info->data16;
 				src_data_size = sizeof(uint16);
 				break;
@@ -1242,7 +1242,65 @@ dhd_rtt_stop(dhd_pub_t *dhd, struct ether_addr *mac_list, int mac_cnt)
 	return err;
 }
 
+/* custom tune function to have more accuracy */
+static int
+dhd_rtt_custom_tune(dhd_pub_t *dhd, bool enable)
+{
+	int ret = BCME_OK;
+	uint32 ant_val;
+	rtt_status_info_t *rtt_status = GET_RTTSTATE(dhd);
 
+	/* Select Antenna */
+	if (enable) {
+		/* read current Antenna value */
+		ret = dhd_iovar(dhd, 0, "txchain", (char *)&ant_val,
+				sizeof(uint32), 0);
+		if (ret < 0) {
+			DHD_ERROR(("%s: failed to get txchain, ret=%d\n",
+				__FUNCTION__, ret));
+			goto exit;
+		}
+		rtt_status->txchain = ltoh32(ant_val);
+		/* set 1 for tx chain */
+		ant_val = 1;
+	} else {
+		/* restore the original value of tx chain */
+		ant_val = rtt_status->txchain;
+		if (ant_val == 0) goto exit;
+		rtt_status->txchain = 0;
+	}
+	ant_val = htol32(ant_val);
+	ret = dhd_iovar(dhd, 0, "txchain", (char *)&ant_val,
+			sizeof(uint32), 1);
+	if (ret < 0) {
+		DHD_ERROR(("%s: failed to set txchain, ret=%d\n", __FUNCTION__, ret));
+	}
+#ifdef ENABLE_VHT_ACK
+	{
+		int16 vht = 1;
+		wl_proxd_params_iovar_t proxd_tune;
+		/*  read the current tune params */
+		memset(&proxd_tune, 0, sizeof(wl_proxd_params_iovar_t));
+		ret = dhd_iovar(dhd, 0, "proxd_tune", (char *)&proxd_tune,
+				sizeof(wl_proxd_params_iovar_t), 0);
+		if (ret < 0) {
+			DHD_ERROR(("%s : failed to get proxd_tune %d\n", __FUNCTION__, ret));
+			goto exit;
+		}
+		/* set VHT ACK in current tune param */
+		proxd_tune.u.tof_tune.force_K = 0;
+		proxd_tune.u.tof_tune.vhtack = htol16(vht);
+		proxd_tune.method = htol16(PROXD_TOF_METHOD);
+		ret = dhd_iovar(dhd, 0, "proxd_tune", (char *)&proxd_tune,
+				sizeof(wl_proxd_params_iovar_t), 1);
+		if (ret < 0) {
+			DHD_ERROR(("%s : failed to set proxd_tune %d\n", __FUNCTION__, ret));
+		}
+	}
+#endif /* ENABLE_VHT_ACK */
+exit:
+	return ret;
+}
 static int
 dhd_rtt_start(dhd_pub_t *dhd)
 {
@@ -1293,6 +1351,12 @@ dhd_rtt_start(dhd_pub_t *dhd)
 			DHD_ERROR(("failed to enable FTM (%d)\n", err));
 			goto exit;
 		}
+		/* VHT ACK for more accuracy */
+		err = dhd_rtt_custom_tune(dhd, TRUE);
+		if (err < 0) {
+			DHD_ERROR(("failed to set rtt_custom_set (%d)\n", err));
+			goto exit;
+		}
 	}
 
 	/* delete session of index default sesession  */
@@ -1340,13 +1404,13 @@ dhd_rtt_start(dhd_pub_t *dhd)
 	DHD_RTT((">\t number of frame per burst : %d\n", rtt_target->num_frames_per_burst));
 	/* FTM retry count */
 	if (rtt_target->num_retries_per_ftm) {
-		ftm_params[ftm_param_cnt].data8 = rtt_target->num_retries_per_ftm;
+		ftm_params[ftm_param_cnt].data16 = htol16(rtt_target->num_retries_per_ftm);
 		ftm_params[ftm_param_cnt++].tlvid = WL_PROXD_TLV_ID_FTM_RETRIES;
 		DHD_RTT((">\t retry count of FTM  : %d\n", rtt_target->num_retries_per_ftm));
 	}
 	/* FTM Request retry count */
 	if (rtt_target->num_retries_per_ftmr) {
-		ftm_params[ftm_param_cnt].data8 = rtt_target->num_retries_per_ftmr;
+		ftm_params[ftm_param_cnt].data16 = htol16(rtt_target->num_retries_per_ftmr);
 		ftm_params[ftm_param_cnt++].tlvid = WL_PROXD_TLV_ID_FTM_REQ_RETRIES;
 		DHD_RTT((">\t retry count of FTM Req : %d\n", rtt_target->num_retries_per_ftm));
 	}
@@ -1424,6 +1488,8 @@ dhd_rtt_start(dhd_pub_t *dhd)
 exit:
 	if (err) {
 		rtt_status->status = RTT_STOPPED;
+		/* restore default value for custome tune */
+		dhd_rtt_custom_tune(dhd, FALSE);
 		/* disable FTM */
 		dhd_rtt_ftm_enable(dhd, FALSE);
 		if (rtt_status->mpc) {
@@ -1583,8 +1649,8 @@ dhd_rtt_convert_results_to_host(rtt_report_t *rtt_report, uint8 *p_data, uint16 
 	/* status */
 	rtt_report->status = ftm_get_statusmap_info(proxd_status,
 			&ftm_status_map_info[0], ARRAYSIZE(ftm_status_map_info));
-	/* rssi (0.5db) */
-	rtt_report->rssi = ABS(ltoh16_ua(&p_data_info->avg_rtt.rssi)) * 2;
+	/* rssi */
+	rtt_report->rssi = (int16)ltoh16_ua(&p_data_info->avg_rtt.rssi);
 	/* rx rate */
 	ratespec = ltoh32_ua(&p_data_info->avg_rtt.ratespec);
 	rtt_report->rx_rate = dhd_rtt_convert_rate_to_host(ratespec);
@@ -1600,7 +1666,7 @@ dhd_rtt_convert_results_to_host(rtt_report_t *rtt_report, uint8 *p_data, uint16 
 	rtt_report->rtt = FTM_INTVL2NSEC(&rtt) * 10; /* nano -> 0.1 nano */
 	rtt_report->rtt_sd = ltoh16_ua(&p_data_info->sd_rtt); /* nano -> 0.1 nano */
 	DHD_RTT(("rtt_report->rtt : %llu\n", rtt_report->rtt));
-	DHD_RTT(("rtt_report->rssi : %d (0.5db)\n", rtt_report->rssi));
+	DHD_RTT(("rtt_report->rssi : %d\n", rtt_report->rssi));
 
 	/* average distance */
 	if (avg_dist != FTM_INVALID) {

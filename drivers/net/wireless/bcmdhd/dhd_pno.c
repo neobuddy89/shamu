@@ -93,7 +93,7 @@
 static wlc_ssid_ext_t * dhd_pno_get_legacy_pno_ssid(dhd_pub_t *dhd,
  dhd_pno_status_info_t *pno_state);
 #ifdef GSCAN_SUPPORT
-static wl_pfn_gscan_ch_bucket_cfg_t *
+static wl_pfn_gscan_channel_bucket_t *
 dhd_pno_gscan_create_channel_list(dhd_pub_t *dhd, dhd_pno_status_info_t *pno_state,
 uint16 *chan_list, uint32 *num_buckets, uint32 *num_buckets_to_fw);
 #endif /* GSCAN_SUPPORT */
@@ -160,6 +160,29 @@ bool dhd_is_legacy_pno_enabled(dhd_pub_t *dhd)
 	return ((_pno_state->pno_mode & DHD_PNO_LEGACY_MODE) != 0);
 }
 
+int dhd_pno_set_mac_oui(dhd_pub_t *dhd, uint8 *oui)
+{
+	int err = BCME_OK;
+	dhd_pno_status_info_t *_pno_state;
+
+	if (!dhd || !dhd->pno_state) {
+		DHD_ERROR(("NULL POINTER : %s\n",
+			__FUNCTION__));
+		return BCME_ERROR;
+	}
+	_pno_state = PNO_GET_PNOSTATE(dhd);
+	if (ETHER_ISMULTI(oui)) {
+		DHD_ERROR(("Expected unicast OUI\n"));
+		err = BCME_ERROR;
+	} else {
+		memcpy(_pno_state->pno_oui, oui, DOT11_OUI_LEN);
+		DHD_PNO(("PNO mac oui to be used - %02x:%02x:%02x\n", _pno_state->pno_oui[0],
+		    _pno_state->pno_oui[1], _pno_state->pno_oui[2]));
+	}
+
+	return err;
+}
+
 #ifdef GSCAN_SUPPORT
 static uint64 convert_fw_rel_time_to_systime(uint32 fw_ts_ms)
 {
@@ -191,26 +214,6 @@ dhd_pno_idx_to_ssid(struct dhd_pno_gscan_params *gscan_params,
 	return;
 }
 
-/* Cleanup all results */
-static void
-dhd_gscan_clear_all_batch_results(dhd_pub_t *dhd)
-{
-	struct dhd_pno_gscan_params *gscan_params;
-	dhd_pno_status_info_t *_pno_state;
-	gscan_results_cache_t *iter;
-
-	_pno_state = PNO_GET_PNOSTATE(dhd);
-	gscan_params = &_pno_state->pno_params_arr[INDEX_OF_GSCAN_PARAMS].params_gscan;
-	iter = gscan_params->gscan_batch_cache;
-	/* Mark everything as consumed */
-	while (iter) {
-		iter->tot_consumed = iter->tot_count;
-		iter = iter->next;
-	}
-	dhd_gscan_batch_cache_cleanup(dhd);
-	return;
-}
-
 static int
 _dhd_pno_gscan_cfg(dhd_pub_t *dhd, wl_pfn_gscan_cfg_t *pfncfg_gscan_param, int size)
 {
@@ -235,6 +238,26 @@ is_batch_retrieval_complete(struct dhd_pno_gscan_params *gscan_params)
 	return (gscan_params->get_batch_flag == GSCAN_BATCH_RETRIEVAL_COMPLETE);
 }
 #endif /* GSCAN_SUPPORT */
+
+static int
+dhd_pno_set_mac_addr(dhd_pub_t *dhd, struct ether_addr *macaddr)
+{
+	int err;
+	wl_pfn_macaddr_cfg_t cfg;
+
+	cfg.version = WL_PFN_MACADDR_CFG_VER;
+	if (ETHER_ISNULLADDR(macaddr))
+		cfg.flags = 0;
+	else
+		cfg.flags = (WL_PFN_MAC_OUI_ONLY_MASK | WL_PFN_SET_MAC_UNASSOC_MASK);
+	memcpy(&cfg.macaddr, macaddr, ETHER_ADDR_LEN);
+
+	err = dhd_iovar(dhd, 0, "pfn_macaddr", (char *)&cfg, sizeof(cfg), 1);
+	if (err < 0)
+		DHD_ERROR(("%s : failed to execute pfn_macaddr\n", __FUNCTION__));
+
+	return err;
+}
 
 static int
 _dhd_pno_suspend(dhd_pub_t *dhd)
@@ -311,6 +334,7 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 	dhd_pno_params_t *_params;
 	dhd_pno_status_info_t *_pno_state;
 	bool combined_scan = FALSE;
+	struct ether_addr macaddr;
 	DHD_PNO(("%s enter\n", __FUNCTION__));
 
 	NULL_CHECK(dhd, "dhd is NULL", err);
@@ -428,7 +452,6 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 		pfn_param.repeat = 0;
 		pfn_param.exp = 0;
 		pfn_param.slow_freq = 0;
-		pfn_param.flags |= htod16(ENABLE << ENABLE_ADAPTSCAN_BIT);
 
 		if (_pno_state->pno_mode & DHD_PNO_LEGACY_MODE) {
 			dhd_pno_status_info_t *_pno_state = PNO_GET_PNOSTATE(dhd);
@@ -441,6 +464,7 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 
 			if ((_params->params_legacy.pno_repeat != 0) ||
 				(_params->params_legacy.pno_freq_expo_max != 0)) {
+				pfn_param.flags |= htod16(ENABLE << ENABLE_ADAPTSCAN_BIT);
 				pfn_param.repeat = (uchar) (_params->params_legacy.pno_repeat);
 				pfn_param.exp = (uchar) (_params->params_legacy.pno_freq_expo_max);
 			}
@@ -467,10 +491,14 @@ _dhd_pno_set(dhd_pub_t *dhd, const dhd_pno_params_t *pno_params, dhd_pno_mode_t 
 		}
 	}
 
-	err = dhd_set_rand_mac_oui(dhd);
-	/* Ignore if chip doesnt support the feature */
-	if (err < 0 && err != BCME_UNSUPPORTED) {
-		DHD_ERROR(("%s : failed to set random mac for PNO scan, %d\n", __FUNCTION__, err));
+	memset(&macaddr, 0, ETHER_ADDR_LEN);
+	memcpy(&macaddr, _pno_state->pno_oui, DOT11_OUI_LEN);
+
+	DHD_PNO(("Setting mac oui to FW - %02x:%02x:%02x\n", _pno_state->pno_oui[0],
+	    _pno_state->pno_oui[1], _pno_state->pno_oui[2]));
+	err = dhd_pno_set_mac_addr(dhd, &macaddr);
+	if (err < 0) {
+		DHD_ERROR(("%s : failed to set pno mac address, error - %d\n", __FUNCTION__, err));
 		goto exit;
 	}
 
@@ -513,7 +541,6 @@ _dhd_pno_add_ssid(dhd_pub_t *dhd, wlc_ssid_ext_t* ssids_list, int nssid)
 	int err = BCME_OK;
 	int i = 0;
 	wl_pfn_t pfn_element;
-
 	NULL_CHECK(dhd, "dhd is NULL", err);
 	if (nssid) {
 		NULL_CHECK(ssids_list, "ssid list is NULL", err);
@@ -522,9 +549,9 @@ _dhd_pno_add_ssid(dhd_pub_t *dhd, wlc_ssid_ext_t* ssids_list, int nssid)
 	{
 		int j;
 		for (j = 0; j < nssid; j++) {
-			DHD_PNO(("%s size = %d hidden = %d flags = %x rssi_thresh %d\n",
+			DHD_PNO(("%s size = %d hidden = %d flags = %x\n",
 				ssids_list[j].SSID, ssids_list[j].SSID_len, ssids_list[j].hidden,
-				ssids_list[j].flags, ssids_list[i].rssi_thresh));
+				ssids_list[j].flags));
 		}
 	}
 	/* Check for broadcast ssid */
@@ -547,12 +574,6 @@ _dhd_pno_add_ssid(dhd_pub_t *dhd, wlc_ssid_ext_t* ssids_list, int nssid)
 		else
 			pfn_element.flags = 0;
 		pfn_element.flags |= htod32(ssids_list[i].flags);
-		/* If a single RSSI threshold is defined, use that */
-#ifdef PNO_MIN_RSSI_TRIGGER
-		pfn_element.flags |= ((PNO_MIN_RSSI_TRIGGER & 0xFF) << WL_PFN_RSSI_SHIFT);
-#else
-		pfn_element.flags |= ((ssids_list[i].rssi_thresh & 0xFF) << WL_PFN_RSSI_SHIFT);
-#endif /* PNO_MIN_RSSI_TRIGGER */
 		memcpy((char *)pfn_element.ssid.SSID, ssids_list[i].SSID,
 			ssids_list[i].SSID_len);
 		pfn_element.ssid.SSID_len = ssids_list[i].SSID_len;
@@ -836,16 +857,13 @@ _dhd_pno_cfg(dhd_pub_t *dhd, uint16 *channel_list, int nchan)
 	if (nchan) {
 		NULL_CHECK(channel_list, "nchan is NULL", err);
 	}
-	if (nchan > WL_NUMCHANNELS) {
-		return BCME_RANGE;
-	}
 	DHD_PNO(("%s enter :  nchan : %d\n", __FUNCTION__, nchan));
 	memset(&pfncfg_param, 0, sizeof(wl_pfn_cfg_t));
 	/* Setup default values */
 	pfncfg_param.reporttype = htod32(WL_PFN_REPORT_ALLNET);
 	pfncfg_param.channel_num = htod32(0);
 
-	for (i = 0; i < nchan; i++)
+	for (i = 0; i < nchan && nchan < WL_NUMCHANNELS; i++)
 		pfncfg_param.channel_list[i] = channel_list[i];
 
 	pfncfg_param.channel_num = htod32(nchan);
@@ -1120,7 +1138,6 @@ static wlc_ssid_ext_t * dhd_pno_get_legacy_pno_ssid(dhd_pub_t *dhd,
 	list_for_each_entry_safe(iter, next, &_params1->params_legacy.ssid_list, list) {
 		p_ssid_list[i].SSID_len = iter->SSID_len;
 		p_ssid_list[i].hidden = iter->hidden;
-		p_ssid_list[i].rssi_thresh = iter->rssi_thresh;
 		memcpy(p_ssid_list[i].SSID, iter->SSID, p_ssid_list[i].SSID_len);
 		i++;
 	}
@@ -1173,7 +1190,6 @@ static int dhd_epno_set_ssid(dhd_pub_t *dhd,
 			flags |= (iter->flags & DHD_EPNO_BG_BAND_TRIG) ?
 			       WL_PFN_SSID_BG_BAND_TRIG: 0;
 			ssid_elem.flags = flags;
-			ssid_elem.rssi_thresh = iter->rssi_thresh;
 			memcpy(ssid_elem.SSID, iter->ssid, iter->ssid_len);
 			if ((err = _dhd_pno_add_ssid(dhd, &ssid_elem, 1)) < 0) {
 				DHD_ERROR(("failed to add ssid list (err %d) in firmware\n", err));
@@ -1249,7 +1265,6 @@ dhd_pno_add_to_ssid_list(dhd_pno_params_t *params, wlc_ssid_ext_t *ssid_list,
 		}
 		_pno_ssid->SSID_len = ssid_list[i].SSID_len;
 		_pno_ssid->hidden = ssid_list[i].hidden;
-		_pno_ssid->rssi_thresh = ssid_list[i].rssi_thresh;
 		memcpy(_pno_ssid->SSID, ssid_list[i].SSID, _pno_ssid->SSID_len);
 		list_add_tail(&_pno_ssid->list, &params->params_legacy.ssid_list);
 		params->params_legacy.nssid++;
@@ -1761,9 +1776,9 @@ void * dhd_pno_get_gscan(dhd_pub_t *dhd, dhd_pno_gscan_cmd_cfg_t type,
 			/* Hardcoding these values for now, need to get
 			 * these values from FW, will change in a later check-in
 			 */
-			ptr->max_scan_cache_size = GSCAN_MAX_AP_CACHE;
+			ptr->max_scan_cache_size = 12;
 			ptr->max_scan_buckets = GSCAN_MAX_CH_BUCKETS;
-			ptr->max_ap_cache_per_scan = GSCAN_MAX_AP_CACHE_PER_SCAN;
+			ptr->max_ap_cache_per_scan = 16;
 			ptr->max_rssi_sample_size = PFN_SWC_RSSI_WINDOW_MAX;
 			ptr->max_scan_reporting_threshold = 100;
 			ptr->max_hotlist_aps = PFN_HOTLIST_MAX_NUM_APS;
@@ -2028,10 +2043,6 @@ int dhd_pno_set_cfg_gscan(dhd_pub_t *dhd, dhd_pno_gscan_cmd_cfg_t type,
 				for (i = 0; i < ptr->nchannel_buckets; i++) {
 					ch_bucket[i].bucket_freq_multiple =
 					ch_bucket[i].bucket_freq_multiple/ptr->scan_fr;
-					ch_bucket[i].bucket_max_multiple =
-					ch_bucket[i].bucket_max_multiple/ptr->scan_fr;
-					DHD_PNO(("mult %d max_mult %d\n", ch_bucket[i].bucket_freq_multiple,
-					      ch_bucket[i].bucket_max_multiple));
 				}
 				_params->params_gscan.scan_fr = ptr->scan_fr;
 
@@ -2096,7 +2107,7 @@ dhd_pno_set_for_gscan(dhd_pub_t *dhd, struct dhd_pno_gscan_params *gscan_params)
 	int tot_nchan = 0;
 	int num_buckets_to_fw, tot_num_buckets, gscan_param_size;
 	dhd_pno_status_info_t *_pno_state = PNO_GET_PNOSTATE(dhd);
-	wl_pfn_gscan_ch_bucket_cfg_t *ch_bucket = NULL;
+	wl_pfn_gscan_channel_bucket_t *ch_bucket = NULL;
 	wl_pfn_gscan_cfg_t *pfn_gscan_cfg_t = NULL;
 	wl_pfn_significant_bssid_t *p_pfn_significant_bssid = NULL;
 	wl_pfn_bssid_t *p_pfn_bssid = NULL;
@@ -2132,25 +2143,19 @@ dhd_pno_set_for_gscan(dhd_pub_t *dhd, struct dhd_pno_gscan_params *gscan_params)
 	    _chan_list, &tot_num_buckets, &num_buckets_to_fw)))
 		goto exit;
 
-	mutex_lock(&_pno_state->pno_mutex);
-	/* Clear any pre-existing results in our cache
-	 * not consumed by framework
-	 */
-	dhd_gscan_clear_all_batch_results(dhd);
 	if (_pno_state->pno_mode & (DHD_PNO_GSCAN_MODE | DHD_PNO_LEGACY_MODE)) {
 		/* store current pno_mode before disabling pno */
 		mode = _pno_state->pno_mode;
 		err = dhd_pno_clean(dhd);
 		if (err < 0) {
 			DHD_ERROR(("%s : failed to disable PNO\n", __FUNCTION__));
-			mutex_unlock(&_pno_state->pno_mutex);
 			goto exit;
 		}
 		/* restore the previous mode */
 		_pno_state->pno_mode = mode;
 	}
+
 	_pno_state->pno_mode |= DHD_PNO_GSCAN_MODE;
-	mutex_unlock(&_pno_state->pno_mutex);
 
 	if (_pno_state->pno_mode & DHD_PNO_LEGACY_MODE) {
 		pssid_list = dhd_pno_get_legacy_pno_ssid(dhd, _pno_state);
@@ -2174,7 +2179,7 @@ dhd_pno_set_for_gscan(dhd_pub_t *dhd, struct dhd_pno_gscan_params *gscan_params)
 	}
 
 	gscan_param_size = sizeof(wl_pfn_gscan_cfg_t) +
-	          (num_buckets_to_fw - 1) * sizeof(wl_pfn_gscan_ch_bucket_cfg_t);
+	          (num_buckets_to_fw - 1) * sizeof(wl_pfn_gscan_channel_bucket_t);
 	pfn_gscan_cfg_t = (wl_pfn_gscan_cfg_t *) MALLOC(dhd->osh, gscan_param_size);
 
 	if (!pfn_gscan_cfg_t) {
@@ -2211,10 +2216,6 @@ dhd_pno_set_for_gscan(dhd_pub_t *dhd, struct dhd_pno_gscan_params *gscan_params)
 			           ch_bucket[i].bucket_end_index;
 			pfn_gscan_cfg_t->channel_bucket[k].bucket_freq_multiple =
 			           ch_bucket[i].bucket_freq_multiple;
-			pfn_gscan_cfg_t->channel_bucket[k].max_freq_multiple =
-			           ch_bucket[i].max_freq_multiple;
-			pfn_gscan_cfg_t->channel_bucket[k].repeat =
-			           ch_bucket[i].repeat;
 			pfn_gscan_cfg_t->channel_bucket[k].flag =
 			           ch_bucket[i].flag;
 			k++;
@@ -2317,7 +2318,6 @@ exit:
 	/* clear mode in case of error */
 	if (err < 0) {
 		int ret = dhd_pno_clean(dhd);
-
 		if (ret < 0) {
 			 DHD_ERROR(("%s : failed to call dhd_pno_clean (err: %d)\n",
 			 	__FUNCTION__, ret));
@@ -2332,21 +2332,21 @@ exit:
 		MFREE(dhd->osh, pfn_gscan_cfg_t, gscan_param_size);
 	if (ch_bucket)
 		MFREE(dhd->osh, ch_bucket,
-		(tot_num_buckets * sizeof(wl_pfn_gscan_ch_bucket_cfg_t)));
+		(tot_num_buckets * sizeof(wl_pfn_gscan_channel_bucket_t)));
 	return err;
 
 }
 
-static wl_pfn_gscan_ch_bucket_cfg_t *
+static wl_pfn_gscan_channel_bucket_t *
 dhd_pno_gscan_create_channel_list(dhd_pub_t *dhd,
                                   dhd_pno_status_info_t *_pno_state,
                                   uint16 *chan_list,
                                   uint32 *num_buckets,
                                   uint32 *num_buckets_to_fw)
 {
-	int i, num_channels, err, nchan = WL_NUMCHANNELS, ch_cnt;
+	int i, num_channels, err, nchan = WL_NUMCHANNELS;
 	uint16 *ptr = chan_list, max;
-	wl_pfn_gscan_ch_bucket_cfg_t *ch_bucket;
+	wl_pfn_gscan_channel_bucket_t *ch_bucket;
 	dhd_pno_params_t *_params = &_pno_state->pno_params_arr[INDEX_OF_GSCAN_PARAMS];
 	bool is_pno_legacy_running = _pno_state->pno_mode & DHD_PNO_LEGACY_MODE;
 	dhd_pno_gscan_channel_bucket_t *gscan_buckets = _params->params_gscan.channel_bucket;
@@ -2358,28 +2358,24 @@ dhd_pno_gscan_create_channel_list(dhd_pub_t *dhd,
 
 	*num_buckets_to_fw = 0;
 
-	ch_bucket = (wl_pfn_gscan_ch_bucket_cfg_t *) MALLOC(dhd->osh,
-	   ((*num_buckets) * sizeof(wl_pfn_gscan_ch_bucket_cfg_t)));
+	ch_bucket = (wl_pfn_gscan_channel_bucket_t *) MALLOC(dhd->osh,
+	   ((*num_buckets) * sizeof(wl_pfn_gscan_channel_bucket_t)));
 
 	if (!ch_bucket) {
 		DHD_ERROR(("%s: failed to malloc memory of size %zd\n",
-			__FUNCTION__, (*num_buckets) * sizeof(wl_pfn_gscan_ch_bucket_cfg_t)));
+			__FUNCTION__, (*num_buckets) * sizeof(wl_pfn_gscan_channel_bucket_t)));
 		*num_buckets_to_fw = *num_buckets = 0;
 		return NULL;
 	}
 
 	max = gscan_buckets[0].bucket_freq_multiple;
 	num_channels = 0;
-	/* nchan is the remaining space left in chan_list buffer
-	 * So any overflow list of channels is ignored
-	 */
 	for (i = 0; i < _params->params_gscan.nchannel_buckets && nchan; i++) {
 		if (!gscan_buckets[i].band) {
-			ch_cnt = MIN(gscan_buckets[i].num_channels, (uint8)nchan);
-			num_channels += ch_cnt;
+			num_channels += gscan_buckets[i].num_channels;
 			memcpy(ptr, gscan_buckets[i].chan_list,
-			    ch_cnt * sizeof(uint16));
-			ptr = ptr + ch_cnt;
+			    gscan_buckets[i].num_channels * sizeof(uint16));
+			ptr = ptr + gscan_buckets[i].num_channels;
 		} else {
 			/* get a valid channel list based on band B or A */
 			err = _dhd_pno_get_channels(dhd, ptr,
@@ -2390,7 +2386,7 @@ dhd_pno_gscan_create_channel_list(dhd_pub_t *dhd,
 				DHD_ERROR(("%s: failed to get valid channel list(band : %d)\n",
 					__FUNCTION__, gscan_buckets[i].band));
 				MFREE(dhd->osh, ch_bucket,
-				      ((*num_buckets) * sizeof(wl_pfn_gscan_ch_bucket_cfg_t)));
+				      ((*num_buckets) * sizeof(wl_pfn_gscan_channel_bucket_t)));
 				*num_buckets_to_fw = *num_buckets = 0;
 				return NULL;
 			}
@@ -2401,11 +2397,8 @@ dhd_pno_gscan_create_channel_list(dhd_pub_t *dhd,
 
 		ch_bucket[i].bucket_end_index = num_channels - 1;
 		ch_bucket[i].bucket_freq_multiple = gscan_buckets[i].bucket_freq_multiple;
-		ch_bucket[i].repeat = gscan_buckets[i].repeat;
-		ch_bucket[i].max_freq_multiple = gscan_buckets[i].bucket_max_multiple;
 		ch_bucket[i].flag = gscan_buckets[i].report_flag;
-		/* HAL and FW interpretations are opposite for this bit */
-		ch_bucket[i].flag ^= DHD_PNO_REPORT_NO_BATCH;
+		ch_bucket[i].flag |= CH_BUCKET_GSCAN;
 		if (max < gscan_buckets[i].bucket_freq_multiple)
 			max = gscan_buckets[i].bucket_freq_multiple;
 		nchan = WL_NUMCHANNELS - num_channels;
@@ -2622,9 +2615,6 @@ exit:
 	return err;
 }
 
-/* Cleanup any consumed results 
- * Return TRUE if all results consumed else FALSE
- */
 int dhd_gscan_batch_cache_cleanup(dhd_pub_t *dhd)
 {
 	int ret = 0;
@@ -2664,7 +2654,7 @@ static int _dhd_pno_get_gscan_batch_from_fw(dhd_pub_t *dhd)
 	wifi_gscan_result_t *result;
 	uint8 *nAPs_per_scan = NULL;
 	uint8 num_scans_in_cur_iter;
-	uint16 count;
+	uint16 count, scan_id = 0;
 
 	NULL_CHECK(dhd, "dhd is NULL\n", err);
 	NULL_CHECK(dhd->pno_state, "pno_state is NULL", err);
@@ -2696,7 +2686,13 @@ static int _dhd_pno_get_gscan_batch_from_fw(dhd_pub_t *dhd)
 
 	mutex_lock(&_pno_state->pno_mutex);
 
-	dhd_gscan_clear_all_batch_results(dhd);
+	iter = gscan_params->gscan_batch_cache;
+	/* If a cache has not been consumed , just delete it */
+	while (iter) {
+		iter->tot_consumed = iter->tot_count;
+		iter = iter->next;
+	}
+	dhd_gscan_batch_cache_cleanup(dhd);
 
 	if (!(_pno_state->pno_mode & DHD_PNO_GSCAN_MODE)) {
 		DHD_ERROR(("%s : GSCAN is not enabled\n", __FUNCTION__));
@@ -2725,10 +2721,7 @@ static int _dhd_pno_get_gscan_batch_from_fw(dhd_pub_t *dhd)
 				plbestnet->version, PFN_SCANRESULT_VERSION));
 			goto exit_mutex_unlock;
 		}
-		if (plbestnet->count == 0) {
-			DHD_PNO(("No more batch results\n"));
-			goto exit_mutex_unlock;
-		}
+
 		num_scans_in_cur_iter = 0;
 		timestamp = plbestnet->netinfo[0].timestamp;
 		/* find out how many scans' results did we get in this batch of FW results */
@@ -2770,11 +2763,11 @@ static int _dhd_pno_get_gscan_batch_from_fw(dhd_pub_t *dhd)
 			 * maybe a continuation of previous sets' scan results
 			 */
 			if (TIME_DIFF_MS(ts, plnetinfo->timestamp) > timediff)
-				iter->scan_id = ++gscan_params->scan_id;
+				iter->scan_id = ++scan_id;
 			else
-				iter->scan_id = gscan_params->scan_id;
+				iter->scan_id = scan_id;
 
-			DHD_PNO(("scan_id %d tot_count %d\n", gscan_params->scan_id, nAPs_per_scan[i]));
+			DHD_PNO(("scan_id %d tot_count %d\n", scan_id, nAPs_per_scan[i]));
 			iter->tot_count = nAPs_per_scan[i];
 			iter->tot_consumed = 0;
 			iter->flag = 0;
@@ -3544,7 +3537,6 @@ int dhd_retreive_batch_scan_results(dhd_pub_t *dhd)
 		params_batch->get_batch.bufsize = 0;
 		params_batch->get_batch.reason = PNO_STATUS_EVENT;
 		_params->params_gscan.get_batch_flag = GSCAN_BATCH_RETRIEVAL_IN_PROGRESS;
-		smp_wmb();
 		schedule_work(&_pno_state->work);
 	} else {
 		DHD_PNO(("%s : WLC_E_PFN_BEST_BATCHING retrieval"
@@ -3730,7 +3722,6 @@ dhd_pno_process_epno_result(dhd_pub_t *dhd, const void *data, uint32 event, int 
 	struct dhd_pno_gscan_params *gscan_params;
 	uint32 count, mem_needed = 0, i;
 	uint8 ssid[DOT11_MAX_SSID_LEN + 1];
-	struct ether_addr *bssid;
 
 	*size = 0;
 	if (!_pno_state)
@@ -3764,23 +3755,17 @@ dhd_pno_process_epno_result(dhd_pub_t *dhd, const void *data, uint32 event, int 
 			dhd_pno_idx_to_ssid(gscan_params, &results[i],
 			           evt_data->net[i].index);
 			memcpy(ssid, results[i].ssid, results[i].ssid_len);
-			bssid = &results[i].bssid;
-			memcpy(bssid, &evt_data->net[i].bssid, ETHER_ADDR_LEN);
 			ssid[results[i].ssid_len] = '\0';
-			DHD_PNO(("ssid - %s bssid %02x:%02x:%02x:%02x:%02x:%02x "
-			        "idx %d ch %d rssi %d flags %d\n", ssid,
-			        bssid->octet[0], bssid->octet[1],
-			        bssid->octet[2], bssid->octet[3],
-			        bssid->octet[4], bssid->octet[5],
-			        evt_data->net[i].index, results[i].channel,
-			        results[i].rssi, results[i].flags));
+			DHD_PNO(("ssid - %s idx %d ch %d rssi %d flags %d\n", ssid,
+			          evt_data->net[i].index, results[i].channel,
+			          results[i].rssi, results[i].flags));
 		}
 	} else if (event == WLC_E_PFN_NET_FOUND || event == WLC_E_PFN_NET_LOST) {
 		wl_pfn_scanresults_t *pfn_result = (wl_pfn_scanresults_t *)data;
 		wl_pfn_net_info_t *net;
 
 		if (pfn_result->version != PFN_SCANRESULT_VERSION) {
-			DHD_ERROR(("%s event %d: Incorrect version %d %d\n", __FUNCTION__, event,
+			DHD_PNO(("%s event %d: Incorrect version %d %d\n", __FUNCTION__, event,
 			          pfn_result->version, PFN_SCANRESULT_VERSION));
 			return NULL;
 		}
@@ -3802,17 +3787,11 @@ dhd_pno_process_epno_result(dhd_pub_t *dhd, const void *data, uint32 event, int 
 			               WL_PFN_SSID_EXT_FOUND: WL_PFN_SSID_EXT_LOST;
 			results[i].ssid_len = min(net->pfnsubnet.SSID_len,
 			               (uint8)DOT11_MAX_SSID_LEN);
-			bssid = &results[i].bssid;
-			memcpy(bssid, &net->pfnsubnet.BSSID, ETHER_ADDR_LEN);
 			memcpy(results[i].ssid, net->pfnsubnet.SSID, results[i].ssid_len);
 			memcpy(ssid, results[i].ssid, results[i].ssid_len);
 			ssid[results[i].ssid_len] = '\0';
-			DHD_PNO(("ssid - %s bssid %02x:%02x:%02x:%02x:%02x:%02x "
-			        "ch %d rssi %d flags %d\n", ssid,
-			        bssid->octet[0], bssid->octet[1],
-			        bssid->octet[2], bssid->octet[3],
-			        bssid->octet[4], bssid->octet[5],
-			        results[i].channel, results[i].rssi, results[i].flags));
+			DHD_PNO(("ssid - %s ch %d rssi %d flags %d\n", ssid,
+			          results[i].channel, results[i].rssi, results[i].flags));
 		}
 	}
 	*size = mem_needed;

@@ -2330,64 +2330,65 @@ bool dhd_is_associated(dhd_pub_t *dhd, void *bss_buf, int *retval)
 
 /* Function to estimate possible DTIM_SKIP value */
 int
-dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd, int *dtim_period, int *bcn_interval)
+dhd_get_suspend_bcn_li_dtim(dhd_pub_t *dhd)
 {
 	int bcn_li_dtim = 1; /* deafult no dtim skip setting */
 	int ret = -1;
+	int dtim_period = 0;
+	int ap_beacon = 0;
 	int allowed_skip_dtim_cnt = 0;
 	/* Check if associated */
 	if (dhd_is_associated(dhd, NULL, NULL) == FALSE) {
 		DHD_TRACE(("%s NOT assoc ret %d\n", __FUNCTION__, ret));
-		return bcn_li_dtim;
+		goto exit;
 	}
-	if (dtim_period == NULL || bcn_interval == NULL)
-		return bcn_li_dtim;
 
 	/* read associated AP beacon interval */
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_BCNPRD,
-		bcn_interval, sizeof(*bcn_interval), FALSE, 0)) < 0) {
+		&ap_beacon, sizeof(ap_beacon), FALSE, 0)) < 0) {
 		DHD_ERROR(("%s get beacon failed code %d\n", __FUNCTION__, ret));
-		return bcn_li_dtim;
+		goto exit;
 	}
 
 	/* read associated ap's dtim setup */
 	if ((ret = dhd_wl_ioctl_cmd(dhd, WLC_GET_DTIMPRD,
-		dtim_period, sizeof(*dtim_period), FALSE, 0)) < 0) {
+		&dtim_period, sizeof(dtim_period), FALSE, 0)) < 0) {
 		DHD_ERROR(("%s failed code %d\n", __FUNCTION__, ret));
-		return bcn_li_dtim;
+		goto exit;
 	}
 
 	/* if not assocated just eixt */
-	if (*dtim_period == 0) {
-		return bcn_li_dtim;
+	if (dtim_period == 0) {
+		goto exit;
 	}
 
 	/* attemp to use platform defined dtim skip interval */
 	bcn_li_dtim = dhd->suspend_bcn_li_dtim;
 
 	/* check if sta listen interval fits into AP dtim */
-	if (*dtim_period > CUSTOM_LISTEN_INTERVAL) {
+	if (dtim_period > CUSTOM_LISTEN_INTERVAL) {
 		/* AP DTIM to big for our Listen Interval : no dtim skiping */
 		bcn_li_dtim = NO_DTIM_SKIP;
 		DHD_ERROR(("%s DTIM=%d > Listen=%d : too big ...\n",
-			__FUNCTION__, *dtim_period, CUSTOM_LISTEN_INTERVAL));
-		return bcn_li_dtim;
+			__FUNCTION__, dtim_period, CUSTOM_LISTEN_INTERVAL));
+		goto exit;
 	}
 
-	if (((*dtim_period) * (*bcn_interval) * bcn_li_dtim) > MAX_DTIM_ALLOWED_INTERVAL) {
-		 allowed_skip_dtim_cnt = MAX_DTIM_ALLOWED_INTERVAL / ((*dtim_period) * (*bcn_interval));
+	if ((dtim_period * ap_beacon * bcn_li_dtim) > MAX_DTIM_ALLOWED_INTERVAL) {
+		 allowed_skip_dtim_cnt = MAX_DTIM_ALLOWED_INTERVAL / (dtim_period * ap_beacon);
 		 bcn_li_dtim = (allowed_skip_dtim_cnt != 0) ? allowed_skip_dtim_cnt : NO_DTIM_SKIP;
 	}
 
-	if ((bcn_li_dtim * (*dtim_period)) > CUSTOM_LISTEN_INTERVAL) {
+	if ((bcn_li_dtim * dtim_period) > CUSTOM_LISTEN_INTERVAL) {
 		/* Round up dtim_skip to fit into STAs Listen Interval */
-		bcn_li_dtim = (int)(CUSTOM_LISTEN_INTERVAL / *dtim_period);
+		bcn_li_dtim = (int)(CUSTOM_LISTEN_INTERVAL / dtim_period);
 		DHD_TRACE(("%s agjust dtim_skip as %d\n", __FUNCTION__, bcn_li_dtim));
 	}
 
 	DHD_ERROR(("%s beacon=%d bcn_li_dtim=%d DTIM=%d Listen=%d\n",
-		__FUNCTION__, *bcn_interval, bcn_li_dtim, *dtim_period, CUSTOM_LISTEN_INTERVAL));
+		__FUNCTION__, ap_beacon, bcn_li_dtim, dtim_period, CUSTOM_LISTEN_INTERVAL));
 
+exit:
 	return bcn_li_dtim;
 }
 
@@ -2569,7 +2570,7 @@ wl_iw_parse_ssid_list_tlv(char** list_str, wlc_ssid_ext_t* ssid, int max, int *b
 		/* Get proper CSCAN_TLV_TYPE_SSID_IE */
 		*bytes_left -= 1;
 		str += 1;
-		ssid[idx].rssi_thresh = 0;
+
 		if (str[0] == 0) {
 			/* Broadcast SSID */
 			ssid[idx].SSID_len = 0;

@@ -92,8 +92,7 @@ _dhd_wlfc_prec_enque(struct pktq *pq, int prec, void* p, bool qHead,
 
 
 	ASSERT(prec >= 0 && prec < pq->num_prec);
-	/* queueing chains not allowed */
-	ASSERT(!((PKTLINK(p) != NULL) && (PKTLINK(p) != p)));
+	ASSERT(PKTLINK(p) == NULL);         /* queueing chains not allowed */
 
 	ASSERT(!pktq_full(pq));
 	ASSERT(!pktq_pfull(pq, prec));

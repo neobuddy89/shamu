@@ -63,10 +63,7 @@
 
 #ifdef GSCAN_SUPPORT
 
-#define GSCAN_MAX_CH_BUCKETS             8
-#define GSCAN_MAX_CHANNELS_IN_BUCKET     32
-#define GSCAN_MAX_AP_CACHE_PER_SCAN      32
-#define GSCAN_MAX_AP_CACHE               320
+#define GSCAN_MAX_CH_BUCKETS         8
 #define GSCAN_BG_BAND_MASK             (1 << 0)
 #define GSCAN_A_BAND_MASK              (1 << 1)
 #define GSCAN_DFS_MASK                 (1 << 2)
@@ -195,9 +192,7 @@ typedef enum dhd_pno_mode {
 #endif /* GSCAN_SUPPORT */
 struct dhd_pno_ssid {
 	bool		hidden;
-	int8		rssi_thresh;
-	uint8		dummy;
-	uint16		SSID_len;
+	uint32		SSID_len;
 	uchar		SSID[DOT11_MAX_SSID_LEN];
 	struct list_head list;
 };
@@ -278,8 +273,6 @@ struct dhd_pno_hotlist_params {
 	struct list_head bssid_list;
 };
 #ifdef GSCAN_SUPPORT
-#define DHD_PNO_REPORT_NO_BATCH      (1 << 2)
-
 typedef struct dhd_pno_gscan_channel_bucket {
 	uint16 bucket_freq_multiple;
 	/* band = 1 All bg band channels,
@@ -289,9 +282,7 @@ typedef struct dhd_pno_gscan_channel_bucket {
 	uint16 band;
 	uint8 report_flag;
 	uint8 num_channels;
-	uint16 repeat;
-	uint16 bucket_max_multiple;
-	uint16 chan_list[GSCAN_MAX_CHANNELS_IN_BUCKET];
+	uint16 chan_list[GSCAN_MAX_CH_BUCKETS];
 } dhd_pno_gscan_channel_bucket_t;
 
 
@@ -318,7 +309,6 @@ typedef struct dhd_epno_results {
 	int8 rssi;
 	uint16 channel;
 	uint16 flags;
-	struct ether_addr bssid;
 } dhd_epno_results_t;
 
 struct dhd_pno_swc_evt_param {
@@ -399,7 +389,6 @@ struct dhd_pno_gscan_params {
 	struct list_head hotlist_bssid_list;
 	struct list_head significant_bssid_list;
 	struct list_head epno_ssid_list;
-	uint32 scan_id;
 };
 
 typedef struct gscan_scan_params {
@@ -455,6 +444,7 @@ typedef union dhd_pno_params {
 #endif /* GSCAN_SUPPORT */
 } dhd_pno_params_t;
 typedef struct dhd_pno_status_info {
+	uint8 pno_oui[DOT11_OUI_LEN];
 	dhd_pub_t *dhd;
 	struct work_struct work;
 	struct mutex pno_mutex;
@@ -493,6 +483,7 @@ dhd_dev_pno_stop_for_batch(struct net_device *dev);
 extern int
 dhd_dev_pno_set_for_hotlist(struct net_device *dev, wl_pfn_bssid_t *p_pfn_bssid,
 	struct dhd_pno_hotlist_params *hotlist_params);
+extern int dhd_dev_pno_set_mac_oui(struct net_device *dev, uint8 *oui);
 extern bool dhd_dev_is_legacy_pno_enabled(struct net_device *dev);
 #ifdef GSCAN_SUPPORT
 extern int

@@ -386,8 +386,7 @@ typedef struct wlc_ssid {
 typedef struct wlc_ssid_ext {
 	bool       hidden;
 	uint16     flags;
-	uint8	   SSID_len;
-	int8	   rssi_thresh;
+	uint16	   SSID_len;
 	uchar		SSID[DOT11_MAX_SSID_LEN];
 } wlc_ssid_ext_t;
 
@@ -2718,18 +2717,15 @@ typedef struct wl_pfn_cfg {
 #define CH_BUCKET_REPORT_FULL_RESULT        2
 #define CH_BUCKET_GSCAN                     4
 
-typedef struct wl_pfn_gscan_ch_bucket_cfg {
-	uint8 bucket_end_index;
+typedef struct wl_pfn_gscan_channel_bucket {
+	uint16 bucket_end_index;
 	uint8 bucket_freq_multiple;
 	uint8 flag;
-	uint8 reserved;
-	uint16 repeat;
-	uint16 max_freq_multiple;
-} wl_pfn_gscan_ch_bucket_cfg_t;
+} wl_pfn_gscan_channel_bucket_t;
 
-#define GSCAN_SEND_ALL_RESULTS_MASK          (1 << 0)
-#define GSCAN_CFG_FLAGS_ONLY_MASK            (1 << 7)
-#define WL_GSCAN_CFG_VERSION                     2
+#define GSCAN_SEND_ALL_RESULTS_MASK    (1 << 0)
+#define GSCAN_CFG_FLAGS_ONLY_MASK      (1 << 7)
+#define WL_GSCAN_CFG_VERSION            1
 typedef struct wl_pfn_gscan_cfg {
 	uint16 version;
 	/* BIT0 1 = send probes/beacons to HOST
@@ -2750,7 +2746,7 @@ typedef struct wl_pfn_gscan_cfg {
 	uint8  count_of_channel_buckets;
 	uint8  retry_threshold;
 	uint16  lost_ap_window;
-	wl_pfn_gscan_ch_bucket_cfg_t channel_bucket[1];
+	wl_pfn_gscan_channel_bucket_t channel_bucket[1];
 } wl_pfn_gscan_cfg_t;
 
 #define WL_PFN_REPORT_ALLNET    0
@@ -2777,7 +2773,7 @@ typedef struct wl_pfn_list {
 	wl_pfn_t	pfn[1];
 } wl_pfn_list_t;
 
-#define PFN_SSID_EXT_VERSION   2
+#define PFN_SSID_EXT_VERSION   1
 
 typedef struct wl_pfn_ext {
 	uint8 flags;
@@ -2802,8 +2798,7 @@ typedef struct wl_pfn_result_ssid {
 	/* channel number */
 	uint16 channel;
 	/* Assume idx in order of cfg */
-	uint16 index;
-	struct ether_addr bssid;
+	uint32 index;
 } wl_pfn_result_ssid_crc32_t;
 
 typedef struct wl_pfn_ssid_ext_result {
@@ -3359,21 +3354,6 @@ typedef struct wl_rssi_event {
 						 * beacons/packets crosses a level.
 						 */
 } wl_rssi_event_t;
-
-#define RSSI_MONITOR_VERSION    1
-#define RSSI_MONITOR_STOP       (1 << 0)
-typedef struct wl_rssi_monitor_cfg {
-	uint8 version;
-	uint8 flags;
-	int8 max_rssi;
-	int8 min_rssi;
-}wl_rssi_monitor_cfg_t;
-
-typedef struct wl_rssi_monitor_evt {
-	uint8 version;
-	int8 cur_rssi;
-	uint16 pad;
-} wl_rssi_monitor_evt_t;
 
 typedef struct wl_action_obss_coex_req {
 	uint8 info;

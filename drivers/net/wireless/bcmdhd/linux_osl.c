@@ -330,7 +330,7 @@ int osl_static_mem_init(osl_t *osh, void *adapter)
 			return -ENOMEM;
 		}
 		else
-			printk("alloc static buf at %p!\n", bcm_static_buf);
+			printk("alloc static buf at %x!\n", (unsigned int)bcm_static_buf);
 
 
 		sema_init(&bcm_static_buf->static_sem, 1);
@@ -864,13 +864,8 @@ osl_pktget_static(osl_t *osh, uint len)
 			skb->data = skb->head + NET_SKB_PAD;
 			skb->tail = skb->head + NET_SKB_PAD;
 #else
-			skb->data = skb->head + NET_SKB_PAD;
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
-			skb_set_tail_pointer(skb, len);
-#else
-			skb->tail = skb->data + len;
-#endif
-
+			skb->data = skb->head + 16;
+			skb->tail = skb->head + 16;
 #endif /* __ARM_ARCH_7A__ */
 			skb->cloned = 0;
 #if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 14)
@@ -878,11 +873,7 @@ osl_pktget_static(osl_t *osh, uint len)
 #endif /* LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 14) */
 			spin_unlock_irqrestore(&bcm_static_skb->osl_pkt_lock, flags);
 #else
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
-			skb_set_tail_pointer(skb, len);
-#else
 			skb->tail = skb->data + len;
-#endif
 			up(&bcm_static_skb->osl_pkt_sem);
 #endif /* BCMPCIE */
 			return skb;
@@ -898,11 +889,7 @@ osl_pktget_static(osl_t *osh, uint len)
 		if ((i >= STATIC_PKT_1PAGE_NUM) && (i < STATIC_PKT_1_2PAGE_NUM)) {
 			bcm_static_skb->pkt_use[i] = 1;
 			skb = bcm_static_skb->skb_8k[i - STATIC_PKT_1PAGE_NUM];
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
-			skb_set_tail_pointer(skb, len);
-#else
 			skb->tail = skb->data + len;
-#endif
 			skb->len = len;
 #if defined(BCMPCIE)
 			spin_unlock_irqrestore(&bcm_static_skb->osl_pkt_lock, flags);
@@ -919,11 +906,7 @@ osl_pktget_static(osl_t *osh, uint len)
 		bcm_static_skb->pkt_use[STATIC_PKT_MAX_NUM - 1] = 1;
 
 		skb = bcm_static_skb->skb_16k;
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
-		skb_set_tail_pointer(skb, len);
-#else
 		skb->tail = skb->data + len;
-#endif
 		skb->len = len;
 
 		up(&bcm_static_skb->osl_pkt_sem);
