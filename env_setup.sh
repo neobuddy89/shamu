@@ -17,7 +17,7 @@ TARGET=${1}
 
 export KERNELDIR=`readlink -f .`;
 export PARENT_DIR=`readlink -f ${KERNELDIR}/..`;
-export INITRAMFS_SOURCE=`readlink -f $PARENT_DIR/../ramdisks/$TARGET`;
+export INITRAMFS_SOURCE=`readlink -f $PARENT_DIR/../ramdisks/shamu-m`;
 export INITRAMFS_TMP=${KERNELDIR}/tmp/initramfs_source;
 
 # Kernel

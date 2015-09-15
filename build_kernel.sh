@@ -111,7 +111,7 @@ if [ -e $KERNELDIR/out/boot/zImage-dtb ]; then
 			sleep 1;
 			ADB_STATUS=`adb get-state` >> /dev/null;
 		done
-		adb push $KERNELDIR/out/Hydra*.zip /storage/sdcard0/
+		adb push $KERNELDIR/out/Hydra*.zip /sdcard/
 		while [ "$reboot_recovery" != "y" ] && [ "$reboot_recovery" != "n" ] && [ "$reboot_recovery" != "Y" ] && [ "$reboot_recovery" != "N" ]
 		do
 			read -p "${bldblu}Reboot to recovery?${txtrst}${blu} (y/n)${txtrst}" reboot_recovery;
