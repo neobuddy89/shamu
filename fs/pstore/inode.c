@@ -357,7 +357,7 @@ int pstore_mkfile(enum pstore_type_id type, char *psname, u64 id, int count,
 		scnprintf(name, PSTORE_NAMELEN, "dmesg-%s-%lld", psname, id);
 		break;
 	case PSTORE_TYPE_CONSOLE:
-		scnprintf(name, PSTORE_NAMELEN, "console-%s-%lld", psname, id);
+		scnprintf(name, PSTORE_NAMELEN, "console-%s", psname);
 		break;
 	case PSTORE_TYPE_FTRACE:
 		scnprintf(name, PSTORE_NAMELEN, "ftrace-%s-%lld", psname, id);
