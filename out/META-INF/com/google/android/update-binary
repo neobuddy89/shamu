@@ -199,6 +199,9 @@ rm -f system/etc/init.d/03_cputweaks >> /dev/null;
 rm -f system/etc/init.d/96setenforce >> /dev/null;
 rm -f system/etc/init.d/99fstrim >> /dev/null;
 
+rm -rf /tmp >> /dev/null;
+mkdir /tmp
+
 cd /tmp
 unzip -o "$ZIP"
 chmod 777 -R /tmp
@@ -224,8 +227,27 @@ gunzip -c /tmp/boot/ramdisk/boot.img-ramdisk.gz | cpio -i
 rm /tmp/ramdisk/boot.img-ramdisk.gz
 rm /tmp/boot/ramdisk/boot.img-ramdisk.gz
 
-rm /tmp/boot/ramdisk/init.environ.rc
-cp -f /tmp/ramdisk/init.environ.rc /tmp/boot/ramdisk/init.environ.rc
+if [ -e /tmp/boot/ramdisk/init.environ.rc ]  &&
+   [ -e /tmp/ramdisk/init.environ.rc ]; then
+	rm /tmp/boot/ramdisk/init.environ.rc
+	cp -f /tmp/ramdisk/init.environ.rc /tmp/boot/ramdisk/init.environ.rc
+else
+	ui_print "Error setting environment."
+	ui_print "Please reboot recovery and flash kernel again!"
+	exit 1;
+fi
+
+if [ -e /tmp/boot/ramdisk/sbin/healthd ]  &&
+   [ -e /tmp/ramdisk/sbin/healthd ]; then
+	rm /tmp/boot/ramdisk/sbin/healthd
+	rm /tmp/boot/ramdisk/charger
+	cp -f /tmp/ramdisk/sbin/healthd /tmp/boot/ramdisk/sbin/healthd
+	cp -f /tmp/ramdisk/charger /tmp/boot/ramdisk/charger
+else
+	ui_print "Error installing charger service."
+	ui_print "Please reboot recovery and flash kernel again!"
+	exit 1;
+fi
 
 cd /tmp/boot/ramdisk/
 find . | cpio -o -H newc | gzip > /tmp/boot/boot.img-ramdisk.gz
