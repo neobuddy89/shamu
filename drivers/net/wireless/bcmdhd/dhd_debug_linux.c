@@ -211,6 +211,62 @@ dhd_os_start_logging(dhd_pub_t *dhdp, char *ring_name, int log_level,
 }
 
 int
+dhd_os_reset_logging(dhd_pub_t *dhdp)
+{
+	int ret = BCME_OK;
+	int ring_id;
+	linux_dbgring_info_t *os_priv, *ring_info;
+
+	os_priv = dhd_dbg_get_priv(dhdp);
+	if (!os_priv)
+		return BCME_ERROR;
+
+	/* Stop all rings */
+	for (ring_id = DEBUG_RING_ID_INVALID + 1; ring_id < DEBUG_RING_ID_MAX; ring_id++) {
+		DHD_RING(("%s: Stop ring buffer %d\n", __FUNCTION__, ring_id));
+
+		ring_info = &os_priv[ring_id];
+		/* cancel any pending work */
+		cancel_delayed_work_sync(&ring_info->work);
+		/* log level zero makes stop logging on that ring */
+		ring_info->log_level = 0;
+		ring_info->interval = 0;
+		/* change the configuration */
+		ret = dhd_dbg_set_configuration(dhdp, ring_id, 0, 0, 0);
+		if (ret) {
+			DHD_ERROR(("dhd_set_configuration is failed : %d\n", ret));
+			return ret;
+		}
+	}
+	return ret;
+}
+
+#define SUPPRESS_LOG_LEVEL 1
+int
+dhd_os_suppress_logging(dhd_pub_t *dhdp, bool suppress)
+{
+	int ret = BCME_OK;
+	int max_log_level;
+	int enable = (suppress) ? 0 : 1;
+	linux_dbgring_info_t *os_priv;
+
+	os_priv = dhd_dbg_get_priv(dhdp);
+	if (!os_priv)
+		return BCME_ERROR;
+
+	max_log_level = MAX(os_priv[FW_VERBOSE_RING_ID].log_level, os_priv[FW_EVENT_RING_ID].log_level);
+	if (max_log_level == SUPPRESS_LOG_LEVEL) {
+		/* suppress the logging in FW not to wake up host while device in suspend mode */
+		ret = dhd_iovar(dhdp, 0, "logtrace", (char *)&enable, sizeof(enable), 1);
+		if (ret < 0 && (ret != BCME_UNSUPPORTED)) {
+			DHD_ERROR(("logtrace is failed : %d\n", ret));
+		}
+	}
+
+	return ret;
+}
+
+int
 dhd_os_get_ring_status(dhd_pub_t *dhdp, int ring_id, dhd_dbg_ring_status_t *dbg_ring_status)
 {
 	return dhd_dbg_get_ring_status(dhdp, ring_id, dbg_ring_status);

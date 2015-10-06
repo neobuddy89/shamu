@@ -45,7 +45,7 @@ bool cfg_multichip = FALSE;
 bcmdhd_wifi_platdata_t *dhd_wifi_platdata = NULL;
 static int wifi_plat_dev_probe_ret = 0;
 static bool is_power_on = FALSE;
-#ifdef DHD_OF_SUPPORT
+#if defined(DHD_OF_SUPPORT)
 static bool dts_enabled = TRUE;
 extern struct resource dhd_wlan_resources;
 extern struct wifi_platform_data dhd_wlan_control;
@@ -53,7 +53,7 @@ extern struct wifi_platform_data dhd_wlan_control;
 static bool dts_enabled = FALSE;
 struct resource dhd_wlan_resources = {0};
 struct wifi_platform_data dhd_wlan_control = {0};
-#endif /* CONFIG_OF && !defined(CONFIG_ARCH_MSM) */
+#endif /* defined(DHD_OF_SUPPORT) */
 
 static int dhd_wifi_platform_load(void);
 
@@ -177,6 +177,11 @@ int wifi_platform_bus_enumerate(wifi_adapter_info_t *adapter, bool device_presen
 	DHD_ERROR(("%s device present %d\n", __FUNCTION__, device_present));
 	if (plat_data->set_carddetect) {
 		err = plat_data->set_carddetect(device_present);
+	} else {
+#if defined(CONFIG_ARCH_MSM) && defined(BCMPCIE)
+		extern int msm_pcie_enumerate(u32 rc_idx);
+		msm_pcie_enumerate(1);
+#endif
 	}
 	return err;
 
@@ -264,6 +269,7 @@ static int wifi_plat_dev_drv_probe(struct platform_device *pdev)
 		adapter->irq_num = resource->start;
 		adapter->intr_flags = resource->flags & IRQF_TRIGGER_MASK;
 	}
+
 
 	wifi_plat_dev_probe_ret = dhd_wifi_platform_load();
 	return wifi_plat_dev_probe_ret;
@@ -355,6 +361,7 @@ static int wifi_ctrlfunc_register_drv(void)
 
 	dev1 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME, wifi_platdev_match);
 	dev2 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME2, wifi_platdev_match);
+
 	if (!dts_enabled) {
 		if (dev1 == NULL && dev2 == NULL) {
 			DHD_ERROR(("no wifi platform data, skip\n"));
@@ -403,12 +410,14 @@ static int wifi_ctrlfunc_register_drv(void)
 		wifi_plat_dev_probe_ret = dhd_wifi_platform_load();
 	}
 
+
 	/* return probe function's return value if registeration succeeded */
 	return wifi_plat_dev_probe_ret;
 }
 
 void wifi_ctrlfunc_unregister_drv(void)
 {
+
 	struct device *dev1, *dev2;
 
 	dev1 = bus_find_device(&platform_bus_type, NULL, WIFI_PLAT_NAME, wifi_platdev_match);
@@ -430,6 +439,7 @@ void wifi_ctrlfunc_unregister_drv(void)
 			wifi_platform_bus_enumerate(adapter, FALSE);
 		}
 	}
+
 	kfree(dhd_wifi_platdata->adapters);
 	dhd_wifi_platdata->adapters = NULL;
 	dhd_wifi_platdata->num_adapters = 0;
