@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2014, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -290,17 +290,20 @@ static int diag_remove_client_entry(struct file *file)
 	struct diag_dci_client_tbl *dci_entry = NULL;
 	unsigned long flags;
 
+	if (!driver)
+		return -ENOMEM;
+
+	mutex_lock(&driver->diag_file_mutex);
 	if (!file) {
+		mutex_unlock(&driver->diag_file_mutex);
 		return -ENOENT;
 	}
 	if (!(file->private_data)) {
+		mutex_unlock(&driver->diag_file_mutex);
 		return -EINVAL;
 	}
 
 	diagpriv_data = file->private_data;
-
-	if (!driver)
-		return -ENOMEM;
 
 	/* clean up any DCI registrations, if this is a DCI client
 	* This will specially help in case of ungraceful exit of any DCI client
@@ -366,10 +369,12 @@ static int diag_remove_client_entry(struct file *file)
 			driver->client_map[i].pid = 0;
 			kfree(diagpriv_data);
 			diagpriv_data = NULL;
+			file->private_data = 0;
 			break;
 		}
 	}
 	mutex_unlock(&driver->diagchar_mutex);
+	mutex_unlock(&driver->diag_file_mutex);
 	return 0;
 }
 
@@ -2610,6 +2615,7 @@ static int __init diagchar_init(void)
 	driver->in_busy_pktdata = 0;
 	driver->in_busy_dcipktdata = 0;
 	mutex_init(&driver->diagchar_mutex);
+	mutex_init(&driver->diag_file_mutex);
 	init_waitqueue_head(&driver->wait_q);
 	init_waitqueue_head(&driver->smd_wait_q);
 	INIT_WORK(&(driver->diag_drain_work), diag_drain_work_fn);
