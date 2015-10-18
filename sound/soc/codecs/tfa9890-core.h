@@ -171,7 +171,7 @@
 /* route gain info on datao pin on right channel */
 #define TFA9890_DORS_GAIN		(0x1 << 3)
 /* select gain input channel for stereo config */
-#define TFA9890_GAIN_IN			(0x1 << 5)
+#define TFA9890_GAIN_IN		(0x1 << 5)
 
 
 /* Mute States */
