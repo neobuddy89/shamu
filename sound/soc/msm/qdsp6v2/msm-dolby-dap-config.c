@@ -753,7 +753,7 @@ int msm_dolby_dap_param_to_get_control_get(struct snd_kcontrol *kcontrol,
 	int port_id = dolby_dap_params_states.port_id;
 
 	if (port_id == DOLBY_INVALID_PORT_ID) {
-		pr_err("%s, port_id not set, do not query ADM\n", __func__);
+		pr_debug("%s, port_id not set, do not query ADM\n", __func__);
 		return -EINVAL;
 	}
 	params_value = kzalloc(params_length, GFP_KERNEL);

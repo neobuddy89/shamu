@@ -27,7 +27,6 @@
 #include <linux/err.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
-#include <linux/wakeup_reason.h>
 
 #include <mach/msm_iomap.h>
 #include <mach/gpiomux.h>
@@ -381,10 +380,8 @@ void msm_gpio_show_resume_irq(void)
 	spin_lock_irqsave(&tlmm_lock, irq_flags);
 	for_each_set_bit(i, msm_gpio.wake_irqs, ngpio) {
 		intstat = __msm_gpio_get_intr_status(i);
-		if (intstat) {
+		if (intstat)
 			irq = msm_gpio_to_irq(&msm_gpio.gpio_chip, i);
-			log_base_wakeup_reason(irq);
-		}
 	}
 	spin_unlock_irqrestore(&tlmm_lock, irq_flags);
 }
