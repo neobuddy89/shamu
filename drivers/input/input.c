@@ -29,6 +29,9 @@
 #include <linux/rcupdate.h>
 #include "input-compat.h"
 
+static bool disable_release_keys;
+module_param(disable_release_keys, bool, 0755);
+
 MODULE_AUTHOR("Vojtech Pavlik <vojtech@suse.cz>");
 MODULE_DESCRIPTION("Input core");
 MODULE_LICENSE("GPL");
@@ -1666,7 +1669,8 @@ void input_reset_device(struct input_dev *dev)
 		 * Keys that have been pressed at suspend time are unlikely
 		 * to be still pressed when we resume.
 		 */
-		if (!test_bit(INPUT_PROP_NO_DUMMY_RELEASE, dev->propbit)) {
+		if (!test_bit(INPUT_PROP_NO_DUMMY_RELEASE, dev->propbit) &&
+				!disable_release_keys) {
 			spin_lock_irq(&dev->event_lock);
 			input_dev_release_keys(dev);
 			spin_unlock_irq(&dev->event_lock);
