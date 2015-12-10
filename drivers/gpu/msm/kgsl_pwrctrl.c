@@ -1138,7 +1138,7 @@ int kgsl_pwrctrl_init(struct kgsl_device *device)
 
 	pwr->power_flags = 0;
 
-	pwr->interval_timeout = pdata->idle_timeout;
+	pwr->interval_timeout = msecs_to_jiffies(pdata->idle_timeout);
 	pwr->strtstp_sleepwake = pdata->strtstp_sleepwake;
 
 	pwr->pm_qos_active_latency = pdata->pm_qos_active_latency;
@@ -1702,7 +1702,7 @@ static int _check_active_count(struct kgsl_device *device, int count)
 int kgsl_active_count_wait(struct kgsl_device *device, int count)
 {
 	int result = 0;
-	long wait_jiffies = HZ;
+	long wait_jiffies = msecs_to_jiffies(1000);
 
 	BUG_ON(!mutex_is_locked(&device->mutex));
 
