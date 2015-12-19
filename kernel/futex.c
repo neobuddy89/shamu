@@ -1652,9 +1652,9 @@ retry_private:
 		case 0:
 			/* We hold a reference on the pi state. */
 			break;
+
+			/* If the above failed, then pi_state is NULL */
 		case -EFAULT:
-			put_pi_state(pi_state);
-			pi_state = NULL;
 			double_unlock_hb(hb1, hb2);
 			hb_waiters_dec(hb2);
 			put_futex_key(&key2);
@@ -1670,8 +1670,6 @@ retry_private:
 			 *   exit to complete.
 			 * - The user space value changed.
 			 */
-			put_pi_state(pi_state);
-			pi_state = NULL;
 			double_unlock_hb(hb1, hb2);
 			hb_waiters_dec(hb2);
 			put_futex_key(&key2);
