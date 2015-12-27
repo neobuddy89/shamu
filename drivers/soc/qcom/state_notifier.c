@@ -12,11 +12,9 @@
 #include <linux/state_notifier.h>
 #include <linux/notifier.h>
 #include <linux/export.h>
-#include <linux/fb.h>
 #include <linux/module.h>
 
 #define DEFAULT_SUSPEND_DEFER_TIME 	10
-#define DEFAULT_USE_FB_NOTIFIER 	0
 #define STATE_NOTIFIER			"state_notifier"
 
 /*
@@ -31,8 +29,8 @@ do {				\
 		pr_info(msg);	\
 } while (0)
 
-static struct notifier_block notif;
-static int prev_fb = FB_BLANK_UNBLANK;
+static bool enabled;
+module_param_named(enabled, enabled, bool, 0664);
 static unsigned int suspend_defer_time = DEFAULT_SUSPEND_DEFER_TIME;
 module_param_named(suspend_defer_time, suspend_defer_time, uint, 0664);
 static struct delayed_work suspend_work;
@@ -41,8 +39,6 @@ struct work_struct resume_work;
 bool state_suspended;
 module_param_named(state_suspended, state_suspended, bool, 0444);
 static bool suspend_in_progress;
-bool use_fb_notifier = DEFAULT_USE_FB_NOTIFIER;
-module_param_named(use_fb_notifier, use_fb_notifier, bool, 0664);
 
 static BLOCKING_NOTIFIER_HEAD(state_notifier_list);
 
@@ -96,7 +92,7 @@ static void _resume_work(struct work_struct *work)
 void state_suspend(void)
 {
 	dprintk("%s: suspend called.\n", STATE_NOTIFIER);
-	if (state_suspended || suspend_in_progress)
+	if (state_suspended || suspend_in_progress || !enabled)
 		return;
 
 	suspend_in_progress = true;
@@ -115,45 +111,8 @@ void state_resume(void)
 		queue_work_on(0, susp_wq, &resume_work);
 }
 
-static int fb_notifier_callback(struct notifier_block *self,
-				unsigned long event, void *data)
-{
-	struct fb_event *evdata = data;
-	int *blank;
-
-	if (!use_fb_notifier)
-		return NOTIFY_OK;
-
-	if (evdata && evdata->data && event == FB_EVENT_BLANK) {
-		blank = evdata->data;
-		switch (*blank) {
-			case FB_BLANK_UNBLANK:
-				if (prev_fb == FB_BLANK_POWERDOWN) {
-					state_resume();
-					prev_fb = FB_BLANK_UNBLANK;
-				}
-				break;
-			case FB_BLANK_POWERDOWN:
-				if (prev_fb == FB_BLANK_UNBLANK) {
-					state_suspend();
-					prev_fb = FB_BLANK_POWERDOWN;
-				}
-				break;
-		}
-	}
-	return NOTIFY_OK;
-}
-
-
 static int __init state_notifier_init(void)
 {
-	int ret;
-
-	notif.notifier_call = fb_notifier_callback;
-	ret = fb_register_client(&notif);
-	if (ret)
-		pr_err("Failed to register FB notifier callback for state notifier.\n");
-
 	susp_wq = create_singlethread_workqueue("state_susp_wq");
 	if (!susp_wq)
 		pr_err("State Notifier failed to allocate suspend workqueue\n");
@@ -161,7 +120,7 @@ static int __init state_notifier_init(void)
 	INIT_DELAYED_WORK(&suspend_work, _suspend_work);
 	INIT_WORK(&resume_work, _resume_work);
 
-	return ret;
+	return 0;
 }
 
 subsys_initcall(state_notifier_init);

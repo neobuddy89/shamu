@@ -1056,11 +1056,6 @@ config TOUCHSCREEN_GT9XX
 config WAKE_GESTURES
         bool "Wake Gestures"
 
-config STATE_NOTIFIER
-        bool "State Notifier"
-	depends on TOUCHSCREEN_ATMEL_MXT_MMI
-	default y
-
 source "drivers/input/touchscreen/gt9xx/Kconfig"
 
 endif
