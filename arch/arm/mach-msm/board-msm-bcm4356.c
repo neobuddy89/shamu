@@ -600,12 +600,14 @@ static bool bcm_wifi_process_partial_resume(int action)
 		break;
 	case WIFI_PR_VOTE_FOR_RESUME:
 		bcm_suspend = PR_RESUME_OK_STATE;
-		complete(&bcm_comp);
+		if (!completion_done(&bcm_pk_comp))
+			complete(&bcm_comp);
 		break;
 	case WIFI_PR_VOTE_FOR_SUSPEND:
 		if (bcm_suspend == PR_IN_RESUME_STATE)
 			bcm_suspend = PR_SUSPEND_OK_STATE;
-		complete(&bcm_comp);
+		if (!completion_done(&bcm_pk_comp))
+			complete(&bcm_comp);
 		break;
 	case WIFI_PR_NOTIFY_RESUME:
 		INIT_COMPLETION(bcm_comp);
