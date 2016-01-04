@@ -1542,8 +1542,12 @@ static inline u64 cpu_load_sync(int cpu, int sync)
 	 * we may want to discount the load of the currently running
 	 * task.
 	 */
-	if (sync && cpu == smp_processor_id())
-		load -= rq->curr->ravg.demand;
+	if (sync && cpu == smp_processor_id()) {
+		if (load > rq->curr->ravg.demand)
+			load -= rq->curr->ravg.demand;
+		else
+			load = 0;
+	}
 
 	return scale_load_to_cpu(load, cpu);
 }
@@ -1583,8 +1587,8 @@ static int mostly_idle_cpu_sync(int cpu, u64 load, int sync)
 	if (sync && cpu == smp_processor_id())
 		nr_running--;
 
-	return (load <= rq->mostly_idle_load
-		&& nr_running <= rq->mostly_idle_nr_run);
+	return load <= rq->mostly_idle_load &&
+		nr_running <= rq->mostly_idle_nr_run;
 }
 
 static int boost_refcount;
