@@ -1057,37 +1057,6 @@ config HAS_MACH_MEMUTILS
 	help
 	Faster memcpy performance for Krait
 
-config MSM_HOTPLUG
-	bool "MSM hotplug driver"
-	depends on HOTPLUG_CPU
-	default y
-	help
-	  The MSM hotplug driver controls on-/offlining of additional cores based
-	  on current cpu load.
-
-config BRICKED_HOTPLUG
-	bool "Enable kernel based mpdecision"
-	depends on MSM_RUN_QUEUE_STATS
-	default y
-	help
-	  This enables kernel based multi core control.
-	  (up/down hotplug based on load)
-
-config INTELLI_HOTPLUG
-	bool "Intelli hotplug driver"
-	depends on HOTPLUG_CPU
-	default y
-	help
-	  An intelligent cpu hotplug driver for
-	  Low Latency Frequency Transition capable processors.
-
-config MSM_LIMITER
-	bool "MSM Frequency Limiter Driver"
-	default y
-	help
-	  The MSM Frequency Limiter Driver controls max frequency limit for each CPU
-	  to desired value on suspend/resume
-
 config FORCE_FAST_CHARGE
 	bool "Force faster charge rate for AC/USB"
 	default y
