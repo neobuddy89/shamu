@@ -2128,7 +2128,6 @@ static int venus_hfi_core_init(void *device)
 	venus_hfi_set_state(dev, VENUS_STATE_INIT);
 
 	dev->intr_status = 0;
-	INIT_LIST_HEAD(&dev->sess_head);
 	venus_hfi_set_registers(dev);
 
 	if (!dev->hal_client) {
@@ -3938,6 +3937,7 @@ static void *venus_hfi_add_device(u32 device_id,
 	mutex_init(&hdevice->session_lock);
 	mutex_init(&hdevice->resource_lock);
 
+	INIT_LIST_HEAD(&hdevice->sess_head);
 	if (hal_ctxt.dev_count == 0)
 		INIT_LIST_HEAD(&hal_ctxt.dev_head);
 
