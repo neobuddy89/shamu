@@ -178,9 +178,6 @@ static enum bcl_threshold_state bcl_vph_state = BCL_THRESHOLD_DISABLED,
 		bcl_ibat_state = BCL_THRESHOLD_DISABLED;
 static DEFINE_MUTEX(bcl_notify_mutex);
 
-static uint32_t bcl_hotplug_request, bcl_hotplug_mask;
-static DEFINE_MUTEX(bcl_hotplug_mutex);
-static bool bcl_hotplug_enabled;
 static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
 static bool bcl_hit_shutdown_voltage;
@@ -212,73 +209,6 @@ static void power_supply_callback(struct power_supply *psy)
 	else
 		bcl_config_vph_adc(gbcl, BCL_HIGH_THRESHOLD_TYPE);
 }
-
-static void __ref bcl_handle_hotplug(void)
-{
-	int ret = 0, _cpu = 0;
-	uint32_t prev_hotplug_request = 0;
-
-	mutex_lock(&bcl_hotplug_mutex);
-	prev_hotplug_request = bcl_hotplug_request;
-
-	if (bcl_vph_state == BCL_LOW_THRESHOLD)
-		bcl_hotplug_request = bcl_hotplug_mask;
-	else
-		bcl_hotplug_request = 0;
-
-	if (bcl_hotplug_request == prev_hotplug_request)
-		goto handle_hotplug_exit;
-
-	for_each_possible_cpu(_cpu) {
-		if (!(bcl_hotplug_mask & BIT(_cpu)))
-			continue;
-
-		if (bcl_hotplug_request & BIT(_cpu)) {
-			if (!cpu_online(_cpu))
-				continue;
-			ret = cpu_down(_cpu);
-			if (ret)
-				pr_err("Error %d offlining core %d\n",
-					ret, _cpu);
-			else
-				pr_info("Set Offline CPU:%d\n", _cpu);
-		} else {
-			if (cpu_online(_cpu))
-				continue;
-			ret = cpu_up(_cpu);
-			if (ret)
-				pr_err("Error %d onlining core %d\n",
-					ret, _cpu);
-			else
-				pr_info("Allow Online CPU:%d\n", _cpu);
-		}
-	}
-
-handle_hotplug_exit:
-	mutex_unlock(&bcl_hotplug_mutex);
-	return;
-}
-static int __ref bcl_cpu_ctrl_callback(struct notifier_block *nfb,
-	unsigned long action, void *hcpu)
-{
-	uint32_t cpu = (uintptr_t)hcpu;
-
-	if (action == CPU_UP_PREPARE || action == CPU_UP_PREPARE_FROZEN) {
-		if ((bcl_hotplug_mask & BIT(cpu))
-			&& (bcl_hotplug_request & BIT(cpu))) {
-			pr_debug("preventing CPU%d from coming online\n", cpu);
-			return NOTIFY_BAD;
-		} else {
-			pr_debug("voting for CPU%d to be online\n", cpu);
-		}
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block __refdata bcl_cpu_notifier = {
-	.notifier_call = bcl_cpu_ctrl_callback,
-};
 
 static int bcl_cpufreq_callback(struct notifier_block *nfb,
 		unsigned long event, void *data)
@@ -349,7 +279,6 @@ static void battery_monitor_work(struct work_struct *work)
 	if (gbcl->bcl_mode == BCL_DEVICE_ENABLED) {
 		bcl->btm_mode = BCL_VPH_MONITOR_MODE;
 		update_cpu_freq();
-		bcl_handle_hotplug();
 		bcl_get_battery_voltage(&vbatt);
 		pr_debug("vbat is %d\n", vbatt);
 		if (bcl_vph_state == BCL_LOW_THRESHOLD) {
@@ -1045,11 +974,10 @@ vdd_rstr_exit:
 
 static int probe_btm_properties(struct bcl_context *bcl)
 {
-	int ret = 0, i = 0, cpu = 0, curr_ua = 0;
+	int ret = 0, curr_ua = 0;
 	int adc_interval_us;
 	struct device_node *ibat_node = NULL, *dev_node = bcl->dev->of_node;
 	char *key = NULL;
-	struct device_node *core_phandle;
 	key = "qcom,ibat-monitor";
 	ibat_node = of_find_node_by_name(dev_node, key);
 	if (!ibat_node) {
@@ -1135,19 +1063,6 @@ static int probe_btm_properties(struct bcl_context *bcl)
 		ret = PTR_ERR(bcl->btm_vadc_dev);
 		goto btm_probe_exit;
 	}
-	core_phandle = of_parse_phandle(dev_node,
-			"qcom,bcl-hotplug-list", i++);
-	while (core_phandle) {
-		bcl_hotplug_enabled = true;
-		for_each_possible_cpu(cpu) {
-			if (of_get_cpu_node(cpu, NULL) == core_phandle)
-				bcl_hotplug_mask |= BIT(cpu);
-		}
-		core_phandle = of_parse_phandle(dev_node,
-			"qcom,bcl-hotplug-list", i++);
-	}
-	if (!bcl_hotplug_mask)
-		bcl_hotplug_enabled = false;
 
 	get_vdd_rstr_freq(bcl, ibat_node);
 	get_smb135x_low_voltage_uv(bcl, ibat_node);
@@ -1159,8 +1074,6 @@ static int probe_btm_properties(struct bcl_context *bcl)
 			CPUFREQ_POLICY_NOTIFIER);
 	if (ret)
 		pr_err("Error with cpufreq register. err:%d\n", ret);
-	if (bcl_hotplug_enabled)
-		register_cpu_notifier(&bcl_cpu_notifier);
 
 	bcl_psy.name = bcl_psy_name;
 	bcl_psy.type = POWER_SUPPLY_TYPE_BCL;
