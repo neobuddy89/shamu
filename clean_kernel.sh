@@ -41,7 +41,7 @@ rm -f $KERNELDIR/out/*.zip >> /dev/null;
 rm -rf $KERNELDIR/tmp >> /dev/null;
 
 # clean up leftover junk
-find . -type f \( -iname \*.rej \
+find . -not -path '*/\.*' -type f \( -iname \*.rej \
 				-o -iname \*.orig \
 				-o -iname \*.bkp \
 				-o -iname \*.ko \
