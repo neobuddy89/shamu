@@ -140,6 +140,4 @@ extern bool sdioh_gpioin(sdioh_info_t *sd, uint32 gpio);
 extern SDIOH_API_RC sdioh_gpioouten(sdioh_info_t *sd, uint32 gpio);
 extern SDIOH_API_RC sdioh_gpioout(sdioh_info_t *sd, uint32 gpio, bool enab);
 
-extern void sdioh_retune_hold(sdioh_info_t *sd, bool hold);
-
 #endif /* _sdio_api_h_ */

@@ -321,15 +321,12 @@ wl_cfgp2p_init_priv(struct bcm_cfg80211 *cfg)
 void
 wl_cfgp2p_deinit_priv(struct bcm_cfg80211 *cfg)
 {
-	unsigned long flags;
 	CFGP2P_DBG(("In\n"));
-	spin_lock_irqsave(&cfg->cfgp2p_lock, flags);
 	if (cfg->p2p) {
 		kfree(cfg->p2p);
 		cfg->p2p = NULL;
 	}
 	cfg->p2p_supported = 0;
-	spin_unlock_irqrestore(&cfg->cfgp2p_lock, flags);
 }
 /*
  * Set P2P functions into firmware
@@ -2435,18 +2432,14 @@ wl_cfgp2p_register_ndev(struct bcm_cfg80211 *cfg)
 s32
 wl_cfgp2p_unregister_ndev(struct bcm_cfg80211 *cfg)
 {
-	if (!cfg || !cfg->p2p_net || !cfg->p2p_wdev) {
+
+	if (!cfg || !cfg->p2p_net) {
 		CFGP2P_ERR(("Invalid Ptr\n"));
 		return -EINVAL;
 	}
 
 	unregister_netdev(cfg->p2p_net);
 	free_netdev(cfg->p2p_net);
-	cfg->p2p_net = NULL;
-
-	WL_DBG(("Freeing %p\n", cfg->wdev));
-	kfree(cfg->wdev);
-	cfg->p2p_wdev = NULL;
 
 	return 0;
 }
@@ -2491,7 +2484,7 @@ static int wl_cfgp2p_if_open(struct net_device *net)
 {
 	struct wireless_dev *wdev = net->ieee80211_ptr;
 
-	if (!wdev || !wl_cfg80211_is_p2p_active(net))
+	if (!wdev || !wl_cfg80211_is_p2p_active())
 		return -EINVAL;
 	WL_TRACE(("Enter\n"));
 #if !defined(WL_IFACE_COMB_NUM_CHANNELS)
@@ -2512,12 +2505,11 @@ static int wl_cfgp2p_if_open(struct net_device *net)
 static int wl_cfgp2p_if_stop(struct net_device *net)
 {
 	struct wireless_dev *wdev = net->ieee80211_ptr;
-	struct bcm_cfg80211 *cfg = wl_get_cfg(net);
 
 	if (!wdev)
 		return -EINVAL;
 
-	wl_cfg80211_scan_stop(cfg, net);
+	wl_cfg80211_scan_stop(net);
 
 #if !defined(WL_IFACE_COMB_NUM_CHANNELS)
 	wdev->wiphy->interface_modes = (wdev->wiphy->interface_modes)
@@ -2616,7 +2608,7 @@ wl_cfgp2p_stop_p2p_device(struct wiphy *wiphy, struct wireless_dev *wdev)
 
 	WL_TRACE(("Enter\n"));
 
-	ret = wl_cfg80211_scan_stop(cfg, wdev);
+	ret = wl_cfg80211_scan_stop(wdev);
 	if (unlikely(ret < 0)) {
 		CFGP2P_ERR(("P2P scan stop failed, ret=%d\n", ret));
 	}
@@ -2666,14 +2658,3 @@ wl_cfgp2p_del_p2p_disc_if(struct wireless_dev *wdev, struct bcm_cfg80211 *cfg)
 	return 0;
 }
 #endif /* WL_CFG80211_P2P_DEV_IF */
-
-int
-wl_cfgp2p_check_enabled(struct bcm_cfg80211 *cfg)
-{
-	unsigned long flags;
-	int ret;
-	spin_lock_irqsave(&cfg->cfgp2p_lock, flags);
-	ret = cfg->p2p_supported;
-	spin_unlock_irqrestore(&cfg->cfgp2p_lock, flags);
-	return ret;
-}

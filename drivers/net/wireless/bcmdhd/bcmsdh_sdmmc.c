@@ -75,7 +75,7 @@ uint sd_divisor = 2;			/* Default 48MHz/2 = 24MHz */
 uint sd_power = 1;		/* Default to SD Slot powered ON */
 uint sd_clock = 1;		/* Default to SD Clock turned ON */
 uint sd_hiok = FALSE;	/* Don't use hi-speed mode by default */
-uint sd_msglevel = SDH_ERROR_VAL;
+uint sd_msglevel = 0x01;
 uint sd_use_dma = TRUE;
 
 #ifndef CUSTOM_RXCHAIN
@@ -918,11 +918,6 @@ sdioh_request_word(sdioh_info_t *sd, uint cmd_type, uint rw, uint func, uint add
 	sdio_release_host(sd->func[func]);
 
 	if (err_ret) {
-		int abort_err;
-
-		sd_err(("bcmsdh_sdmmc: Failed to %s word, Err: %d\n",
-			rw ? "Write" : "Read", err_ret));
-		WARN_ON_ONCE(1);
 #if defined(MMC_SDIO_ABORT)
 		/* Any error on CMD53 transaction should abort that function using function 0. */
 		while (sdio_abort_retry--) {
@@ -934,15 +929,18 @@ sdioh_request_word(sdioh_info_t *sd, uint cmd_type, uint rw, uint func, uint add
 				 * As of this time, this is temporaray one
 				 */
 				sdio_writeb(sd->func[0],
-					func, SDIOD_CCCR_IOABORT, &abort_err);
+					func, SDIOD_CCCR_IOABORT, &err_ret);
 				sdio_release_host(sd->func[0]);
 			}
-			if (!abort_err)
+			if (!err_ret)
 				break;
 		}
-		if (abort_err)
-			sd_err(("bcmsdh_sdmmc: Failed to send abort: %d\n", abort_err));
+		if (err_ret)
 #endif /* MMC_SDIO_ABORT */
+		{
+			sd_err(("bcmsdh_sdmmc: Failed to %s word, Err: 0x%08x",
+				rw ? "Write" : "Read", err_ret));
+		}
 	}
 
 	return ((err_ret == 0) ? SDIOH_API_RC_SUCCESS : SDIOH_API_RC_FAIL);
@@ -1103,7 +1101,6 @@ sdioh_buffer_tofrom_bus(sdioh_info_t *sd, uint fix_inc, uint write, uint func,
 
 	sdio_release_host(sd->func[func]);
 
-	WARN_ON_ONCE(err_ret);
 	if (err_ret)
 		sd_err(("%s: %s FAILED %p, addr=0x%05x, pkt_len=%d, ERR=%d\n", __FUNCTION__,
 		       (write) ? "TX" : "RX", buf, addr, len, err_ret));
@@ -1158,7 +1155,7 @@ sdioh_request_buffer(sdioh_info_t *sd, uint pio_dma, uint fix_inc, uint write, u
 	if (((ulong)buffer & DMA_ALIGN_MASK) == 0 && (buf_len & DMA_ALIGN_MASK) == 0)
 		return sdioh_buffer_tofrom_bus(sd, fix_inc, write, func, addr, buffer, buf_len);
 
-	sd_info(("%s: [%d] doing memory copy buf=%p, len=%d\n",
+	sd_err(("%s: [%d] doing memory copy buf=%p, len=%d\n",
 		__FUNCTION__, write, buffer, buf_len));
 
 	/* otherwise, a memory copy is needed as the input buffer is not aligned */
@@ -1456,15 +1453,4 @@ SDIOH_API_RC
 sdioh_gpio_init(sdioh_info_t *sd)
 {
 	return SDIOH_API_RC_FAIL;
-}
-
-void
-sdioh_retune_hold(sdioh_info_t *sd, bool hold)
-{
-	sdio_claim_host(sd->func[0]);
-	if (hold)
-		sdio_retune_hold_now(sd->func[0]);
-	else
-		sdio_retune_release(sd->func[0]);
-	sdio_release_host(sd->func[0]);
 }

@@ -966,8 +966,7 @@ dhd_dbg_start(dhd_pub_t *dhdp, bool start)
 	int ring_id;
 	dhd_dbg_t *dbg;
 	dhd_dbg_ring_t *dbg_ring;
-
-	if (!dhdp || !dhdp->dbg)
+	if (!dhdp)
 		return BCME_BADARG;
 	dbg = dhdp->dbg;
 

@@ -360,9 +360,6 @@ typedef struct dhd_pub {
 	int   hang_was_sent;
 	int   rxcnt_timeout;		/* counter rxcnt timeout to send HANG */
 	int   txcnt_timeout;		/* counter txcnt timeout to send HANG */
-#ifdef BCMPCIE
-	int   d3ackcnt_timeout;
-#endif
 	bool hang_report;		/* enable hang report by default */
 #ifdef WLMEDIA_HTSF
 	uint8 htsfdlystat_sz; /* Size of delay stats, max 255B */
@@ -693,9 +690,9 @@ extern int dhd_dev_set_whitelist_ssid(struct net_device *dev, wl_ssid_whitelist_
 /* OS independent layer functions */
 extern int dhd_os_proto_block(dhd_pub_t * pub);
 extern int dhd_os_proto_unblock(dhd_pub_t * pub);
-extern int dhd_os_ioctl_resp_wait(dhd_pub_t * pub, uint * condition);
+extern int dhd_os_ioctl_resp_wait(dhd_pub_t * pub, uint * condition, bool * pending);
 extern int dhd_os_ioctl_resp_wake(dhd_pub_t * pub);
-extern int dhd_os_d3ack_wait(dhd_pub_t * pub, uint * condition);
+extern int dhd_os_d3ack_wait(dhd_pub_t * pub, uint * condition, bool * pending);
 extern int dhd_os_d3ack_wake(dhd_pub_t * pub);
 extern struct net_device *dhd_linux_get_primary_netdev(dhd_pub_t *dhdp);
 extern unsigned int dhd_os_get_ioctl_resp_timeout(void);
@@ -812,7 +809,7 @@ extern int dhd_ifidx2hostidx(struct dhd_info *dhd, int ifidx);
 extern int dhd_net2idx(struct dhd_info *dhd, struct net_device *net);
 extern struct net_device * dhd_idx2net(void *pub, int ifidx);
 extern int net_os_send_hang_message(struct net_device *dev);
-extern int wl_host_event(dhd_pub_t *dhd_pub, int *idx, void *pktdata, size_t pktlen,
+extern int wl_host_event(dhd_pub_t *dhd_pub, int *idx, void *pktdata,
                          wl_event_msg_t *, void **data_ptr,  void *);
 extern void wl_event_to_host_order(wl_event_msg_t * evt);
 
@@ -830,8 +827,6 @@ extern int dhd_do_driver_init(struct net_device *net);
 extern int dhd_event_ifadd(struct dhd_info *dhd, struct wl_event_data_if *ifevent,
 	char *name, uint8 *mac);
 extern int dhd_event_ifdel(struct dhd_info *dhd, struct wl_event_data_if *ifevent,
-	char *name, uint8 *mac);
-extern int dhd_event_ifchange(struct dhd_info *dhd, struct wl_event_data_if *ifevent,
 	char *name, uint8 *mac);
 extern struct net_device* dhd_allocate_if(dhd_pub_t *dhdpub, int ifidx, char *name,
 	uint8 *mac, uint8 bssidx, bool need_rtnl_lock);
