@@ -770,10 +770,8 @@ static int lpm_cpuidle_enter(struct cpuidle_device *dev,
 
 	idx = menu_select ? lpm_cpu_menu_select(dev, &index) :
 			lpm_cpu_power_select(dev, &index);
-	if (idx < 0) {
-		local_irq_enable();
+	if (idx < 0)
 		return -EPERM;
-	}
 
 	trace_cpu_idle_rcuidle(idx, dev->cpu);
 
