@@ -49,7 +49,7 @@ export KBUILD_BUILD_USER="NeoBuddy89";
 export KBUILD_BUILD_HOST="DragonCore";
 
 # Compiler
-export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-hydra-linux-gnueabi-5.3-20161001/bin/arm-eabi-;
+export CROSS_COMPILE=$PARENT_DIR/../toolchains/arm-hydra-linux-gnueabi-5.3-20160202/bin/arm-eabi-;
 
 if [ ! -f ${CROSS_COMPILE}gcc ]; then
 	echo "${bldred}Cannot find GCC compiler ${CROSS_COMPILE}gcc${txtrst}";
