@@ -68,12 +68,12 @@ static short lowmem_adj[6] = {
 };
 static int lowmem_adj_size = 6;
 static int lowmem_minfree[6] = {
-	 3 *  512,	/* Foreground App: 	6 MB	*/
-	 2 * 1024,	/* Visible App: 	8 MB	*/
-	 4 * 1024,	/* Secondary Server: 	16 MB	*/
-	16 * 1024,	/* Hidden App: 		64 MB	*/
-	28 * 1024,	/* Content Provider: 	112 MB	*/
-	32 * 1024,	/* Empty App: 		128 MB	*/
+	 4 * 1024,	/* Foreground App: 	16 MB	*/
+	 8 * 1024,	/* Visible App: 	32 MB	*/
+	16 * 1024,	/* Secondary Server: 	65 MB	*/
+	28 * 1024,	/* Hidden App: 		114 MB	*/
+	45 * 1024,	/* Content Provider: 	184 MB	*/
+	50 * 1024,	/* Empty App: 		204 MB	*/
 };
 static int lowmem_minfree_size = 6;
 static int lmk_fast_run = 1;
@@ -89,8 +89,11 @@ static unsigned long lowmem_deathpending_timeout;
 static atomic_t shift_adj = ATOMIC_INIT(0);
 static short adj_max_shift = 353;
 
+static int vm_pressure_adaptive_start = 85;
+#define VM_PRESSURE_ADAPTIVE_STOP	95
+
 /* User knob to enable/disable adaptive lmk feature */
-static int enable_adaptive_lmk;
+static int enable_adaptive_lmk = 1;
 module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int,
 	S_IRUGO | S_IWUSR);
 
@@ -101,7 +104,7 @@ module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int,
  * 90-94. Usually this is a pseudo minfree value, higher than the
  * highest configured value in minfree array.
  */
-static int vmpressure_file_min;
+static int vmpressure_file_min = 66560; /* (65 * 1024) * 4 = 266 MB */
 module_param_named(vmpressure_file_min, vmpressure_file_min, int,
 	S_IRUGO | S_IWUSR);
 
@@ -131,17 +134,19 @@ int adjust_minadj(short *min_score_adj)
 	return ret;
 }
 
+static unsigned long pressure = 0;
+
 static int lmk_vmpressure_notifier(struct notifier_block *nb,
 			unsigned long action, void *data)
 {
 	int other_free = 0, other_file = 0;
-	unsigned long pressure = action;
 	int array_size = ARRAY_SIZE(lowmem_adj);
+	pressure = action;
 
 	if (!enable_adaptive_lmk)
 		return 0;
 
-	if (pressure >= 95) {
+	if (pressure >= VM_PRESSURE_ADAPTIVE_STOP) {
 		other_file = global_page_state(NR_FILE_PAGES) -
 			global_page_state(NR_SHMEM) -
 			total_swapcache_pages();
@@ -149,7 +154,7 @@ static int lmk_vmpressure_notifier(struct notifier_block *nb,
 
 		atomic_set(&shift_adj, 1);
 		trace_almk_vmpressure(pressure, other_free, other_file);
-	} else if (pressure >= 90) {
+	} else if (pressure >= vm_pressure_adaptive_start) {
 		if (lowmem_adj_size < array_size)
 			array_size = lowmem_adj_size;
 		if (lowmem_minfree_size < array_size)
@@ -193,10 +198,14 @@ static bool avoid_to_kill(uid_t uid)
 	 * uid == 1001 > radio
 	 * uid == 1002 > bluetooth
 	 * uid == 1010 > wifi
+	 * uid == 1013 > media
 	 * uid == 1014 > dhcp
+	 * uid == 1021 > gps
+	 * uid == 1027 > nfc
 	 */
-	if (uid == 0 || uid == 1001 || uid == 1002 || uid == 1010 ||
-			uid == 1014)
+	if (uid == 1001 || uid == 1002 || uid == 1010
+			|| uid == 1014 || uid == 1021 ||
+			uid == 1027)
 		return 1;
 	return 0;
 }
@@ -586,7 +595,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		pcred = __task_cred(p);
 		uid = pcred->uid;
 		if (avoid_to_kill(uid) || protected_apps(p->comm)){
-			if (tasksize * (long)(PAGE_SIZE / 1024) >= 100000){
+			if (tasksize * (long)(PAGE_SIZE / 1024) >= 50000){
 				selected = p;
 				selected_tasksize = tasksize;
 				selected_oom_score_adj = oom_score_adj;
@@ -643,6 +652,10 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 			     global_page_state(NR_SLAB_UNRECLAIMABLE) *
 				(long)(PAGE_SIZE / 1024),
 			     sc->gfp_mask);
+		if (pressure >= vm_pressure_adaptive_start)
+			lowmem_print(1, "VM Pressure is %lu\n", pressure);
+		else
+			lowmem_print(2, "VM Pressure is %lu\n", pressure);
 
 		if (lowmem_debug_level >= 2 && selected_oom_score_adj == 0) {
 			show_mem(SHOW_MEM_FILTER_NODES);
@@ -852,6 +865,7 @@ static struct task_struct *pick_first_task(void)
 	first_tsk_sig = rb_entry(left, struct signal_struct, adj_node);
 	return first_tsk_sig->curr_target->group_leader;
 }
+
 static struct task_struct *pick_last_task(void)
 {
 	struct rb_node *right;
@@ -869,7 +883,6 @@ static struct task_struct *pick_last_task(void)
 }
 #endif
 
-
 module_param_named(cost, lowmem_shrinker.seeks, int, S_IRUGO | S_IWUSR);
 #ifdef CONFIG_ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
 __module_param_call(MODULE_PARAM_PREFIX, adj,
@@ -885,6 +898,9 @@ module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 module_param_named(lmk_fast_run, lmk_fast_run, int, S_IRUGO | S_IWUSR);
+module_param_named(vm_pressure_adaptive_start, vm_pressure_adaptive_start, int,
+		   S_IRUGO | S_IWUSR);
+module_param_named(lmk_vm_pressure, pressure, ulong, 0444);
 
 module_init(lowmem_init);
 module_exit(lowmem_exit);
