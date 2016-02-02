@@ -30,7 +30,7 @@ static void swap_fn(struct work_struct *work);
 DECLARE_WORK(swap_work, swap_fn);
 
 /* User knob to enable/disable process reclaim feature */
-static int enable_process_reclaim;
+static int enable_process_reclaim = 1;
 module_param_named(enable_process_reclaim, enable_process_reclaim, int,
 	S_IRUGO | S_IWUSR);
 
@@ -43,10 +43,12 @@ module_param_named(reclaim_avg_efficiency, reclaim_avg_efficiency,
 			int, S_IRUGO);
 
 /* The vmpressure region where process reclaim operates */
-static unsigned long pressure_min = 50;
-static unsigned long pressure_max = 90;
+static unsigned long pressure_min = 40;
+static unsigned long pressure_max = 85;
+static unsigned long pressure = 0;
 module_param_named(pressure_min, pressure_min, ulong, S_IRUGO | S_IWUSR);
 module_param_named(pressure_max, pressure_max, ulong, S_IRUGO | S_IWUSR);
+module_param_named(process_reclaim_pressure, pressure, ulong, S_IRUGO);
 
 /*
  * Scheduling process reclaim workqueue unecessarily
@@ -60,7 +62,7 @@ module_param_named(pressure_max, pressure_max, ulong, S_IRUGO | S_IWUSR);
 static int swap_eff_win = 2;
 module_param_named(swap_eff_win, swap_eff_win, int, S_IRUGO | S_IWUSR);
 
-static int swap_opt_eff = 50;
+static int swap_opt_eff = 40;
 module_param_named(swap_opt_eff, swap_opt_eff, int, S_IRUGO | S_IWUSR);
 
 static atomic_t skip_reclaim = ATOMIC_INIT(0);
@@ -217,7 +219,7 @@ static void swap_fn(struct work_struct *work)
 static int vmpressure_notifier(struct notifier_block *nb,
 			unsigned long action, void *data)
 {
-	unsigned long pressure = action;
+	pressure = action;
 
 	if (!enable_process_reclaim)
 		return 0;
