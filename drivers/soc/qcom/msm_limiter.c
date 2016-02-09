@@ -20,7 +20,7 @@
 #include <soc/qcom/limiter.h>
 
 #define MSM_LIMITER_MAJOR		4
-#define MSM_LIMITER_MINOR		0
+#define MSM_LIMITER_MINOR		1
 
 static unsigned int debug_mask;
 
@@ -159,6 +159,31 @@ static ssize_t limiter_enabled_store(struct kobject *kobj,
 		msm_limiter_start();
 	else
 		msm_limiter_stop();
+
+	return count;
+}
+
+static ssize_t mpd_enabled_show(struct kobject *kobj,
+		struct kobj_attribute *attr, char *buf)
+{
+	return sprintf(buf, "%u\n", limit.mpd_enabled);
+}
+
+static ssize_t mpd_enabled_store(struct kobject *kobj,
+				      struct kobj_attribute *attr,
+				      const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u\n", &val);
+	if (ret != 1 || val < 0 || val > 1)
+		return -EINVAL;
+
+	if (val == limit.mpd_enabled)
+		return count;
+
+	limit.mpd_enabled = val;
 
 	return count;
 }
@@ -443,6 +468,11 @@ static struct kobj_attribute limiter_enabled_attribute =
 		limiter_enabled_show,
 		limiter_enabled_store);
 
+static struct kobj_attribute mpd_enabled_attribute =
+	__ATTR(mpd_enabled, 0666,
+		mpd_enabled_show,
+		mpd_enabled_store);
+
 static struct kobj_attribute debug_mask_attribute =
 	__ATTR(debug_mask, 0666,
 		debug_mask_show,
@@ -456,6 +486,7 @@ static struct kobj_attribute suspend_max_freq_attribute =
 static struct attribute *msm_limiter_attrs[] =
 	{
 		&limiter_enabled_attribute.attr,
+		&mpd_enabled_attribute.attr,
 		&debug_mask_attribute.attr,
 		&suspend_max_freq_attribute.attr,
 		&resume_max_freq.attr,

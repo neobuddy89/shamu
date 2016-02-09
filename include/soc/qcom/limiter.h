@@ -1,5 +1,6 @@
 #define MSM_LIMITER			"msm_limiter"
 #define LIMITER_ENABLED			0
+#define MPD_ENABLED			0
 #if defined(CONFIG_ARCH_MSM8916)
 #define DEFAULT_SUSPEND_FREQUENCY	998400
 #else
@@ -20,6 +21,7 @@
 
 static struct cpu_limit {
 	unsigned int limiter_enabled;
+	unsigned int mpd_enabled;
 	uint32_t suspend_max_freq;
 	uint32_t resume_max_freq_all;
 	uint32_t resume_max_freq[4];
@@ -29,6 +31,7 @@ static struct cpu_limit {
 	struct notifier_block notif;
 } limit = {
 	.limiter_enabled = LIMITER_ENABLED,
+	.mpd_enabled = MPD_ENABLED,
 	.suspend_max_freq = DEFAULT_SUSPEND_FREQUENCY,
 	.resume_max_freq_all = DEFAULT_RESUME_FREQUENCY,
 	.resume_max_freq[0] = DEFAULT_RESUME_FREQUENCY,
