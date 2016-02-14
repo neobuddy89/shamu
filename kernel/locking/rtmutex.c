@@ -14,6 +14,7 @@
 #include <linux/export.h>
 #include <linux/sched.h>
 #include <linux/sched/rt.h>
+#include <linux/sched/deadline.h>
 #include <linux/timer.h>
 
 #include "rtmutex_common.h"
@@ -151,6 +152,12 @@ rt_mutex_waiter_less(struct rt_mutex_waiter *left,
 {
 	if (left->task->prio < right->task->prio)
 		return 1;
+
+	/*
+	 * If both tasks are dl_task(), we check their deadlines.
+	 */
+	if (dl_prio(left->task->prio) && dl_prio(right->task->prio))
+		return (left->task->dl.deadline < right->task->dl.deadline);
 
 	return 0;
 }
@@ -1036,7 +1043,7 @@ void rt_mutex_adjust_pi(struct task_struct *task)
 	raw_spin_lock_irqsave(&task->pi_lock, flags);
 
 	waiter = task->pi_blocked_on;
-	if (!waiter || (waiter->task->prio == task->prio)) {
+	if (!waiter || waiter->task->prio == task->prio) {
 		raw_spin_unlock_irqrestore(&task->pi_lock, flags);
 		return;
 	}
