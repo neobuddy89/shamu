@@ -70,7 +70,7 @@ module_param(migration_load_threshold, uint, 0644);
 static bool load_based_syncs = 1;
 module_param(load_based_syncs, bool, 0644);
 
-static bool sched_boost_on_input = 1;
+static bool sched_boost_on_input;
 module_param(sched_boost_on_input, bool, 0644);
 
 static bool sched_boost_active;
@@ -404,10 +404,12 @@ static void do_input_boost(struct work_struct *work)
 	/* Enable scheduler boost to migrate tasks to big cluster */
 	if (sched_boost_on_input) {
 		ret = sched_set_boost(1);
-		if (ret)
+		if (ret) {
+			sched_boost_on_input = false;
 			pr_err("cpu-boost: HMP boost enable failed\n");
-		else
+		} else {
 			sched_boost_active = true;
+		}
 	}
 
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
