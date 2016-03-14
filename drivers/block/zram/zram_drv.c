@@ -38,7 +38,11 @@
 /* Globals */
 static int zram_major;
 static struct zram *zram_devices;
+#ifdef CONFIG_ZRAM_LZ4_COMPRESS
+static const char *default_compressor = "lz4";
+#else
 static const char *default_compressor = "lzo";
+#endif
 
 /* Module params (documentation at end) */
 static unsigned int num_devices = 1;
