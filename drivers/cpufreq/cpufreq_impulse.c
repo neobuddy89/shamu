@@ -86,9 +86,6 @@ struct cpufreq_impulse_tunables {
 	/* Go to hi speed when CPU load at or above this value. */
 #define DEFAULT_GO_HISPEED_LOAD 99
 	unsigned long go_hispeed_load;
-/* Go to lowest speed when CPU load at or below this value. */
-#define DEFAULT_GO_LOWSPEED_LOAD 5
-	unsigned long go_lowspeed_load;
 
 	/* Target load. Lower values result in higher CPU speeds. */
 	spinlock_t target_loads_lock;
@@ -479,22 +476,34 @@ static void cpufreq_impulse_timer(unsigned long data)
 
 	spin_lock_irqsave(&ppol->target_freq_lock, flags);
 	cpu_load = loadadjfreq / ppol->policy->cur;
-	tunables->boosted = check_cpuboost(data) ||
-			cpu_load >= tunables->go_hispeed_load;
+	tunables->boosted = cpu_load >= tunables->go_hispeed_load;
+#ifdef CONFIG_CPU_BOOST
+	tunables->boosted = check_cpuboost(data) || tunables->boosted;
+#endif			
+#ifdef CONFIG_MSM_HOTPLUG
+	tunables->boosted = fast_lane_mode || tunables->boosted;
+#endif
 #ifdef CONFIG_STATE_NOTIFIER
 	tunables->boosted = tunables->boosted && !state_suspended;
 #endif
 	this_hispeed_freq = max(tunables->hispeed_freq, ppol->policy->min);
 
-	if (cpu_load <= tunables->go_lowspeed_load) {
-		tunables->boosted = false;
-		new_freq = ppol->policy->cpuinfo.min_freq;
+	if (tunables->boosted) {
+		if (ppol->target_freq < this_hispeed_freq &&
+		    cpu_load <= MAX_LOCAL_LOAD) {
+			new_freq = this_hispeed_freq;
+		} else {
+			new_freq = choose_freq(ppol, loadadjfreq);
+
+			if (new_freq < this_hispeed_freq)
+				new_freq = this_hispeed_freq;
+		}
 	} else {
 		new_freq = choose_freq(ppol, loadadjfreq);
+		if (new_freq > tunables->hispeed_freq &&
+				ppol->target_freq < tunables->hispeed_freq)
+			new_freq = tunables->hispeed_freq;
 	}
-
-	if (tunables->boosted)
-		new_freq = max(new_freq, this_hispeed_freq);
 
 	if (cpu_load <= MAX_LOCAL_LOAD &&
 	    ppol->policy->cur >= this_hispeed_freq &&
@@ -901,25 +910,6 @@ static ssize_t store_go_hispeed_load(struct cpufreq_impulse_tunables
 	return count;
 }
 
-static ssize_t show_go_lowspeed_load(struct cpufreq_impulse_tunables
-		*tunables, char *buf)
-{
-	return sprintf(buf, "%lu\n", tunables->go_lowspeed_load);
-}
-
-static ssize_t store_go_lowspeed_load(struct cpufreq_impulse_tunables
-		*tunables, const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-	tunables->go_lowspeed_load = val;
-	return count;
-}
-
 static ssize_t show_min_sample_time(struct cpufreq_impulse_tunables
 		*tunables, char *buf)
 {
@@ -1232,7 +1222,6 @@ show_store_gov_pol_sys(target_loads);
 show_store_gov_pol_sys(above_hispeed_delay);
 show_store_gov_pol_sys(hispeed_freq);
 show_store_gov_pol_sys(go_hispeed_load);
-show_store_gov_pol_sys(go_lowspeed_load);
 show_store_gov_pol_sys(min_sample_time);
 show_store_gov_pol_sys(timer_rate);
 show_store_gov_pol_sys(timer_slack);
@@ -1259,7 +1248,6 @@ gov_sys_pol_attr_rw(target_loads);
 gov_sys_pol_attr_rw(above_hispeed_delay);
 gov_sys_pol_attr_rw(hispeed_freq);
 gov_sys_pol_attr_rw(go_hispeed_load);
-gov_sys_pol_attr_rw(go_lowspeed_load);
 gov_sys_pol_attr_rw(min_sample_time);
 gov_sys_pol_attr_rw(timer_rate);
 gov_sys_pol_attr_rw(timer_slack);
@@ -1276,7 +1264,6 @@ static struct attribute *impulse_attributes_gov_sys[] = {
 	&above_hispeed_delay_gov_sys.attr,
 	&hispeed_freq_gov_sys.attr,
 	&go_hispeed_load_gov_sys.attr,
-	&go_lowspeed_load_gov_sys.attr,
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
@@ -1300,7 +1287,6 @@ static struct attribute *impulse_attributes_gov_pol[] = {
 	&above_hispeed_delay_gov_pol.attr,
 	&hispeed_freq_gov_pol.attr,
 	&go_hispeed_load_gov_pol.attr,
-	&go_lowspeed_load_gov_pol.attr,
 	&min_sample_time_gov_pol.attr,
 	&timer_rate_gov_pol.attr,
 	&timer_slack_gov_pol.attr,
@@ -1343,7 +1329,6 @@ static struct cpufreq_impulse_tunables *alloc_tunable(
 	tunables->nabove_hispeed_delay =
 		ARRAY_SIZE(default_above_hispeed_delay);
 	tunables->go_hispeed_load = DEFAULT_GO_HISPEED_LOAD;
-	tunables->go_lowspeed_load = DEFAULT_GO_LOWSPEED_LOAD;
 	tunables->target_loads = default_target_loads;
 	tunables->ntarget_loads = ARRAY_SIZE(default_target_loads);
 	tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;

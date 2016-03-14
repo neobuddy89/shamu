@@ -310,4 +310,8 @@ extern bool check_cpuboost(int cpu);
 extern bool wakeup_boost;
 #endif
 
+#ifdef CONFIG_MSM_HOTPLUG
+extern bool fast_lane_mode;
+#endif
+
 #endif /* _LINUX_CPU_H_ */

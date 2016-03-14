@@ -131,6 +131,7 @@ struct cpu_load_data {
 static DEFINE_PER_CPU(struct cpu_load_data, cpuload);
 
 static bool io_is_busy;
+bool fast_lane_mode;
 
 static int update_average_load(unsigned int cpu)
 {
@@ -425,8 +426,11 @@ static void msm_hotplug_work(struct work_struct *work)
 
 	if (stats.cur_max_load >= hotplug.fast_lane_load) {
 		/* Enter the fast lane */
+		fast_lane_mode = true;
 		online_cpu(hotplug.max_cpus_online);
 		goto reschedule;
+	} else {
+		fast_lane_mode = false;
 	}
 
 	/* If number of cpus locked, break out early */
@@ -487,6 +491,8 @@ static void msm_hotplug_suspend(void)
 	flush_workqueue(hotplug_wq);
 	cancel_delayed_work_sync(&hotplug_work);
 
+	fast_lane_mode = false;
+
 	/* Put all sibling cores to sleep */
 	for_each_online_cpu(cpu) {
 		if (cpu == 0)
@@ -513,7 +519,11 @@ static void __ref msm_hotplug_resume(void)
 		}
 	}
 
+#ifdef CONFIG_CPU_BOOST
 	if (wakeup_boost || required_wakeup) {
+#else
+	if (required_wakeup) {
+#endif
 		/* Fire up all CPUs */
 		for_each_cpu_not(cpu, cpu_online_mask) {
 			if (cpu == 0)
@@ -732,6 +742,8 @@ static void msm_hotplug_stop(void)
 	input_unregister_handler(&hotplug_input_handler);
 
 	destroy_workqueue(hotplug_wq);
+
+	fast_lane_mode = false;
 
 	/* Put all sibling cores to sleep */
 	for_each_online_cpu(cpu) {
