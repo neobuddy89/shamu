@@ -1,0 +1,5 @@
+Taken from f2fs-stable tree on February 6th, 2016
+This corresponds to the tag 4.5-rc1-3.10
+Source Repository: git://git.kernel.org/pub/scm/linux/kernel/git/jaegeuk/f2fs-stable.git
+Source Branch: linux-3.10.y
+Source Commit: cd6d1aa01a2000ff1ac02bdbf64ff366b787b24c
