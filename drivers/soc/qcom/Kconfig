@@ -151,6 +151,9 @@ config MAXIMUM_CURRENT_THROTTLING
 	  turn on/off CPU based current throttling by setting the
 	  credit/upper limit in the CPU registers.
 
+config STATE_NOTIFIER
+        bool "State Notifier"
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM
