@@ -54,7 +54,7 @@ static LIST_HEAD(cpufreq_policy_list);
  */
 struct cpufreq_cpu_save_data {
 	char gov[CPUFREQ_NAME_LEN];
-	unsigned int max, min;
+	unsigned int max, min, max_freq, min_freq;
 };
 static DEFINE_PER_CPU(struct cpufreq_cpu_save_data, cpufreq_policy_save);
 #endif
@@ -1291,6 +1291,8 @@ static int __cpufreq_remove_dev_prepare(struct device *dev,
 			policy->governor->name, CPUFREQ_NAME_LEN);
 	per_cpu(cpufreq_policy_save, cpu).min = policy->user_policy.min;
 	per_cpu(cpufreq_policy_save, cpu).max = policy->user_policy.max;
+	per_cpu(cpufreq_policy_save, cpu).min_freq = policy->cpuinfo.min_freq;
+	per_cpu(cpufreq_policy_save, cpu).max_freq = policy->cpuinfo.max_freq;
 	pr_debug("Saving CPU%d user policy min %d and max %d\n",
 		 cpu, policy->user_policy.min, policy->user_policy.max);
 #endif
@@ -2222,7 +2224,7 @@ skip:
 EXPORT_SYMBOL(cpufreq_set_freq);
 
 /*
- *	cpufreq_get_max - get max freq of a cpu
+ *	cpufreq_get_max - get policy max freq of a cpu
  *	@cpu: CPU whose max frequency needs to be known
  */
 int cpufreq_get_max(unsigned int cpu)
@@ -2240,7 +2242,7 @@ int cpufreq_get_max(unsigned int cpu)
 EXPORT_SYMBOL(cpufreq_get_max);
 
 /*
- *	cpufreq_get_min - get min freq of a cpu
+ *	cpufreq_get_min - get policy min freq of a cpu
  *	@cpu: CPU whose min frequency needs to be known
  */
 int cpufreq_get_min(unsigned int cpu)
@@ -2256,6 +2258,42 @@ int cpufreq_get_min(unsigned int cpu)
 	return freq;
 }
 EXPORT_SYMBOL(cpufreq_get_min);
+
+/*
+ *	cpuinfo_get_max - get real max freq of a cpu
+ *	@cpu: CPU whose max frequency needs to be known
+ */
+int cpuinfo_get_max(unsigned int cpu)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+	unsigned int freq = per_cpu(cpufreq_policy_save, cpu).max_freq;
+
+	if (policy) {
+		freq = policy->cpuinfo.max_freq;
+		cpufreq_cpu_put(policy);
+	}
+
+	return freq;
+}
+EXPORT_SYMBOL(cpuinfo_get_max);
+
+/*
+ *	cpuinfo_get_min - get real min freq of a cpu
+ *	@cpu: CPU whose min frequency needs to be known
+ */
+int cpuinfo_get_min(unsigned int cpu)
+{
+	struct cpufreq_policy *policy = cpufreq_cpu_get(cpu);
+	unsigned int freq = per_cpu(cpufreq_policy_save, cpu).min_freq;
+
+	if (policy) {
+		freq = policy->cpuinfo.min_freq;
+		cpufreq_cpu_put(policy);
+	}
+
+	return freq;
+}
+EXPORT_SYMBOL(cpuinfo_get_min);
 
 /*
  *	cpufreq_set_gov - set governor for a cpu
