@@ -435,11 +435,9 @@ static int cpufreq_set_policy(struct cpufreq_policy *policy,
 static bool cpufreq_update_allowed(int mpd)
 {
 #ifdef CONFIG_MSM_LIMITER
-	if (mpd == 0 && limit.mpd_enabled == 0)
-#else
-	if (mpd == 0)
-#endif
+	if (mpd == 0 && mpd_enabled == 0)
 		return false;
+#endif
 
 	return true;
 }
