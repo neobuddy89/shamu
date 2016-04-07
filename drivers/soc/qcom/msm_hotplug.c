@@ -1,7 +1,7 @@
 /*
  * MSM Hotplug Driver
  *
- * Copyright (c) 2013-2015, Pranav Vashi <neobuddy89@gmail.com>
+ * Copyright (c) 2013-2016, Pranav Vashi <neobuddy89@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -282,9 +282,7 @@ static int get_lowest_load_cpu(void)
 	unsigned int proj_load;
 	struct cpu_load_data *pcpu;
 
-	for_each_online_cpu(cpu) {
-		if (cpu == 0)
-			continue;
+	for_each_present_cpu(cpu) {
 		pcpu = &per_cpu(cpuload, cpu);
 		cpu_load[cpu] = pcpu->cur_load_maxfreq;
 		if (cpu_load[cpu] < lowest_load) {
@@ -313,8 +311,6 @@ static void __ref cpu_up_work(struct work_struct *work)
 	for_each_cpu_not(cpu, cpu_online_mask) {
 		if (target <= num_online_cpus())
 			break;
-		if (cpu == 0)
-			continue;
 		cpu_up(cpu);
 		apply_down_lock(cpu);
 	}
@@ -327,9 +323,7 @@ static void cpu_down_work(struct work_struct *work)
 
 	target = hotplug.target_cpus;
 
-	for_each_online_cpu(cpu) {
-		if (cpu == 0)
-			continue;
+	for_each_present_cpu(cpu) {
 		lowest_cpu = get_lowest_load_cpu();
 		if (lowest_cpu > 0 && lowest_cpu <= stats.total_cpus) {
 			if (check_down_lock(lowest_cpu) ||
@@ -494,11 +488,9 @@ static void msm_hotplug_suspend(void)
 	fast_lane_mode = false;
 
 	/* Put all sibling cores to sleep */
-	for_each_online_cpu(cpu) {
-		if (cpu == 0)
-			continue;
-		cpu_down(cpu);
-	}
+	for_each_present_cpu(cpu)
+		if (cpu_online(cpu))
+			cpu_down(cpu);
 }
 
 static void __ref msm_hotplug_resume(void)
@@ -526,8 +518,6 @@ static void __ref msm_hotplug_resume(void)
 #endif
 		/* Fire up all CPUs */
 		for_each_cpu_not(cpu, cpu_online_mask) {
-			if (cpu == 0)
-				continue;
 			cpu_up(cpu);
 			apply_down_lock(cpu);
 		}
@@ -700,8 +690,6 @@ static int __ref msm_hotplug_start(void)
 
 	/* Fire up all CPUs */
 	for_each_cpu_not(cpu, cpu_online_mask) {
-		if (cpu == 0)
-			continue;
 		cpu_up(cpu);
 		apply_down_lock(cpu);
 	}
@@ -746,11 +734,9 @@ static void msm_hotplug_stop(void)
 	fast_lane_mode = false;
 
 	/* Put all sibling cores to sleep */
-	for_each_online_cpu(cpu) {
-		if (cpu == 0)
-			continue;
-		cpu_down(cpu);
-	}
+	for_each_present_cpu(cpu)
+		if (cpu_online(cpu))
+			cpu_down(cpu);
 }
 
 static unsigned int *get_tokenized_data(const char *buf, int *num_tokens)
