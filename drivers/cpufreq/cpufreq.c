@@ -1319,24 +1319,10 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 	down_write(&policy->rwsem);
 	cpus = cpumask_weight(policy->cpus);
 
-	cpumask_clear_cpu(cpu, policy->cpus);
+	if (cpus > 1)
+		cpumask_clear_cpu(cpu, policy->cpus);
 	up_write(&policy->rwsem);
 
-#ifdef CONFIG_HOTPLUG_CPU
-	/* Some hotplugged systems have multiple cpufreq policies.
-	 * In these systems, all the CPUs in the policy may be taken offline at
-	 * times, but that does not mean that we should tear down the policy.
-	 * There are governor tunables that we want to keep across hotplug.
-	 */
-	if (has_target()) {
-		if ((ret = __cpufreq_governor(policy, CPUFREQ_GOV_START)) ||
-				(ret = __cpufreq_governor(policy, CPUFREQ_GOV_LIMITS))) {
-			pr_err("%s: Failed to start governor for CPU%u, policy CPU%u\n",
-					__func__, cpu, policy->cpu);
-			return ret;
-		}
-	}
-#else
 	/* If cpu is last user of policy, free policy */
 	if (cpus == 1) {
 		if (has_target()) {
@@ -1377,7 +1363,6 @@ static int __cpufreq_remove_dev_finish(struct device *dev,
 			}
 		}
 	}
-#endif
 
 	return 0;
 }
