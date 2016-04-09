@@ -437,8 +437,8 @@ static int __init msm_rq_stats_init(void)
 	rq_info.def_timer_jiffies = DEFAULT_DEF_TIMER_JIFFIES;
 	rq_info.rq_poll_last_jiffy = 0;
 	rq_info.def_timer_last_jiffy = 0;
-	rq_info.hotplug_disabled = 1;
-	rq_info.hotplug_enabled = 0;
+	rq_info.hotplug_disabled = 0;
+	rq_info.hotplug_enabled = 1;
 	ret = init_rq_attribs();
 
 	rq_info.init = 1;
