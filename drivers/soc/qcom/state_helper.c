@@ -14,23 +14,39 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/power_supply.h>
 #include <linux/sched.h>
-#include <linux/state_notifier.h>
+#include <linux/state_helper.h>
 #include <linux/workqueue.h>
 
 #define STATE_HELPER			"state_helper"
 #define HELPER_ENABLED			0
+#define DELAY_MSEC			100
 #define DEFAULT_MAX_CPUS_ONLINE		NR_CPUS
 #define DEFAULT_SUSP_CPUS		1
+#define DEFAULT_MAX_CPUS_ECONOMIC	2
+#define DEFAULT_MAX_CPUS_CRITICAL	1
+#define DEFAULT_BATT_ECONOMIC		25
+#define DEFAULT_BATT_CRITICAL		15
 #define DEBUG_MASK			1
 
 static struct state_helper {
 	unsigned int enabled;
 	unsigned int max_cpus_online;
-	unsigned int debug;	
+	unsigned int max_cpus_susp;
+	unsigned int max_cpus_eco;
+	unsigned int max_cpus_cri;
+	unsigned int batt_level_eco;
+	unsigned int batt_level_cri;
+	unsigned int debug;
 } helper = {
 	.enabled = HELPER_ENABLED,
 	.max_cpus_online = DEFAULT_MAX_CPUS_ONLINE,
+	.max_cpus_susp = DEFAULT_SUSP_CPUS,
+	.max_cpus_eco = DEFAULT_MAX_CPUS_ECONOMIC,
+	.max_cpus_cri = DEFAULT_MAX_CPUS_CRITICAL,
+	.batt_level_eco = DEFAULT_BATT_ECONOMIC,
+	.batt_level_cri = DEFAULT_BATT_CRITICAL,
 	.debug = DEBUG_MASK
 };
 
@@ -40,6 +56,8 @@ static struct workqueue_struct *helper_wq;
 static struct delayed_work helper_work;
 
 static unsigned int target_cpus;
+static unsigned int batt_limited_cpus = NR_CPUS;
+static unsigned int batt_level = 100;
 
 #define dprintk(msg...)		\
 do { 				\
@@ -53,9 +71,11 @@ static void __ref state_helper_work(struct work_struct *work)
 	int cpu;
 
 	if (state_suspended)
-		target_cpus = DEFAULT_SUSP_CPUS;
+		target_cpus = helper.max_cpus_susp;
 	else
 		target_cpus = helper.max_cpus_online;
+
+	target_cpus = min(target_cpus,  batt_limited_cpus);		
 
 	if (target_cpus < num_online_cpus()) {
 		for_each_online_cpu(cpu) {
@@ -84,6 +104,9 @@ static void __ref state_helper_work(struct work_struct *work)
 	}
 
 	if (helper.debug) {
+		if (batt_level <= 30)
+			pr_info("%s: Low Battery Level Detected.\n",
+				STATE_HELPER);
 		pr_info("%s: Target requested: %u.\n",
 			STATE_HELPER, target_cpus);
 		for_each_possible_cpu(cpu)
@@ -92,9 +115,37 @@ static void __ref state_helper_work(struct work_struct *work)
 	}
 }
 
+static void batt_level_check(void)
+{
+	if (batt_level > helper.batt_level_eco)
+		batt_limited_cpus = NR_CPUS;
+	else if (batt_level > helper.batt_level_cri)
+		batt_limited_cpus = helper.max_cpus_eco;
+	else
+		batt_limited_cpus = helper.max_cpus_cri;
+}
+
 static void reschedule_work(void)
 {
-	queue_delayed_work(helper_wq, &helper_work, 0);
+	batt_level_check();
+	cancel_delayed_work_sync(&helper_work);
+	queue_delayed_work(helper_wq, &helper_work,
+		msecs_to_jiffies(DELAY_MSEC));
+}
+
+void batt_level_notify(int k)
+{
+	if (!helper.enabled || k == batt_level || k < 1 || k > 100)
+		return;
+
+	batt_level = k;
+
+	dprintk("%s: Received new BCL Notification: %u.\n",
+			STATE_HELPER, batt_level);
+
+	if (batt_level == helper.batt_level_cri || 
+		batt_level == helper.batt_level_eco)
+		reschedule_work();
 }
 
 static int state_notifier_callback(struct notifier_block *this,
@@ -201,10 +252,151 @@ static ssize_t store_max_cpus_online(struct kobject *kobj,
 	unsigned int val;
 
 	ret = sscanf(buf, "%u", &val);
-	if (ret != 1 || val < 1 || val > NR_CPUS)
+	if (ret != 1 || val < 1)
 		return -EINVAL;
 
+	if (val > NR_CPUS)
+		val = NR_CPUS;
+
 	helper.max_cpus_online = val;
+	if (helper.enabled)
+		reschedule_work();
+
+	return count;
+}
+
+static ssize_t show_max_cpus_susp(struct kobject *kobj,
+				struct kobj_attribute *attr, 
+				char *buf)
+{
+	return sprintf(buf, "%u\n",helper.max_cpus_susp);
+}
+
+static ssize_t store_max_cpus_susp(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 1)
+		return -EINVAL;
+
+	if (val > helper.max_cpus_online)
+		val = helper.max_cpus_online;
+
+	helper.max_cpus_susp = val;
+
+	return count;
+}
+
+static ssize_t show_max_cpus_eco(struct kobject *kobj,
+				struct kobj_attribute *attr, 
+				char *buf)
+{
+	return sprintf(buf, "%u\n",helper.max_cpus_eco);
+}
+
+static ssize_t store_max_cpus_eco(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 1)
+		return -EINVAL;
+
+	if (val > helper.max_cpus_online)
+		val = helper.max_cpus_online;
+
+	helper.max_cpus_eco = val;
+	if (helper.enabled)
+		reschedule_work();
+
+	return count;
+}
+
+static ssize_t show_max_cpus_cri(struct kobject *kobj,
+				struct kobj_attribute *attr, 
+				char *buf)
+{
+	return sprintf(buf, "%u\n",helper.max_cpus_cri);
+}
+
+static ssize_t store_max_cpus_cri(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 1)
+		return -EINVAL;
+
+	if (val > helper.max_cpus_eco)
+		val = helper.max_cpus_eco;
+
+	helper.max_cpus_cri = val;
+	if (helper.enabled)
+		reschedule_work();
+
+	return count;
+}
+
+static ssize_t show_batt_level_eco(struct kobject *kobj,
+				struct kobj_attribute *attr, 
+				char *buf)
+{
+	return sprintf(buf, "%u\n",helper.batt_level_eco);
+}
+
+static ssize_t store_batt_level_eco(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 1)
+		return -EINVAL;
+
+	if (val > 100)
+		val = 100;
+
+	helper.batt_level_eco = val;
+	if (helper.enabled)
+		reschedule_work();
+
+	return count;
+}
+
+static ssize_t show_batt_level_cri(struct kobject *kobj,
+				struct kobj_attribute *attr, 
+				char *buf)
+{
+	return sprintf(buf, "%u\n",helper.batt_level_cri);
+}
+
+static ssize_t store_batt_level_cri(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	int ret;
+	unsigned int val;
+
+	ret = sscanf(buf, "%u", &val);
+	if (ret != 1 || val < 1)
+		return -EINVAL;
+
+	if (val > helper.batt_level_eco)
+		val = helper.batt_level_eco;
+
+	helper.batt_level_cri = val;
 	if (helper.enabled)
 		reschedule_work();
 
@@ -243,11 +435,21 @@ static struct kobj_attribute _name##_attr = 		\
 
 KERNEL_ATTR_RW(enabled);
 KERNEL_ATTR_RW(max_cpus_online);
+KERNEL_ATTR_RW(max_cpus_susp);
+KERNEL_ATTR_RW(max_cpus_eco);
+KERNEL_ATTR_RW(max_cpus_cri);
+KERNEL_ATTR_RW(batt_level_eco);
+KERNEL_ATTR_RW(batt_level_cri);
 KERNEL_ATTR_RW(debug_mask);
 
 static struct attribute *state_helper_attrs[] = {
 	&enabled_attr.attr,
 	&max_cpus_online_attr.attr,
+	&max_cpus_susp_attr.attr,
+	&max_cpus_eco_attr.attr,
+	&max_cpus_cri_attr.attr,
+	&batt_level_eco_attr.attr,
+	&batt_level_cri_attr.attr,
 	&debug_mask_attr.attr,
 	NULL,
 };

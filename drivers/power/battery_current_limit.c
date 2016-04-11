@@ -25,6 +25,9 @@
 #include <linux/cpufreq.h>
 #include <linux/qpnp/qpnp-adc.h>
 #include <linux/cpu.h>
+#ifdef CONFIG_STATE_HELPER
+#include <linux/state_helper.h>
+#endif
 #define BCL_DEV_NAME "battery_current_limit"
 #define BCL_NAME_LENGTH 20
 /*
@@ -270,9 +273,37 @@ static int bcl_get_battery_voltage(int *vbatt)
 	return 0;
 }
 
+#ifdef CONFIG_STATE_HELPER
+static int bcl_get_battery_level(int *vbatt)
+{
+	static struct power_supply *psy;
+	union power_supply_propval ret = {0,};
+
+	if (psy == NULL) {
+		psy = power_supply_get_by_name("battery");
+		if (psy  == NULL) {
+			pr_err("failed to get ps battery\n");
+			return -EINVAL;
+		}
+	}
+
+	if (psy->get_property(psy, POWER_SUPPLY_PROP_CAPACITY, &ret))
+		return -EINVAL;
+
+	if (ret.intval <= 0)
+		return -EINVAL;
+
+	*vbatt = ret.intval;
+	return 0;
+}
+#endif
+
 static void battery_monitor_work(struct work_struct *work)
 {
 	int vbatt;
+#ifdef CONFIG_STATE_HELPER
+	int vlevel;
+#endif
 	struct bcl_context *bcl = container_of(work,
 			struct bcl_context, battery_monitor_work);
 
@@ -280,6 +311,10 @@ static void battery_monitor_work(struct work_struct *work)
 		bcl->btm_mode = BCL_VPH_MONITOR_MODE;
 		update_cpu_freq();
 		bcl_get_battery_voltage(&vbatt);
+#ifdef CONFIG_STATE_HELPER
+		bcl_get_battery_level(&vlevel);
+		batt_level_notify(vlevel);
+#endif
 		pr_debug("vbat is %d\n", vbatt);
 		if (bcl_vph_state == BCL_LOW_THRESHOLD) {
 			if (vbatt <= gbcl->btm_vph_low_thresh) {
