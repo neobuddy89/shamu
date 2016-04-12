@@ -137,7 +137,7 @@ struct bcl_context {
 	int bcl_vbat_min;
 	/* BCL period poll delay work structure  */
 	struct workqueue_struct		*battery_monitor_wq;
-	struct work_struct		battery_monitor_work;
+	struct delayed_work		battery_monitor_work;
 	/* The max CPU frequency the BTM restricts during high load */
 	uint32_t btm_freq_max;
 	uint32_t btm_gpu_freq_max;
@@ -184,6 +184,8 @@ static DEFINE_MUTEX(bcl_notify_mutex);
 static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
 static bool bcl_hit_shutdown_voltage;
+static bool in_progress;
+
 static int bcl_battery_get_property(struct power_supply *psy,
 				enum power_supply_property prop,
 				union power_supply_propval *val)
@@ -305,7 +307,9 @@ static void battery_monitor_work(struct work_struct *work)
 	int vlevel;
 #endif
 	struct bcl_context *bcl = container_of(work,
-			struct bcl_context, battery_monitor_work);
+			struct bcl_context, battery_monitor_work.work);
+
+	in_progress = false;
 
 	if (gbcl->bcl_mode == BCL_DEVICE_ENABLED) {
 		bcl->btm_mode = BCL_VPH_MONITOR_MODE;
@@ -341,7 +345,12 @@ static void bcl_vph_notify(enum bcl_threshold_state thresh_type)
 		thresh_type == BCL_HIGH_THRESHOLD ? "high" :
 		"unknown");
 	bcl_vph_state = thresh_type;
-	queue_work(gbcl->battery_monitor_wq, &gbcl->battery_monitor_work);
+	if (!in_progress) {
+		in_progress = true;
+		queue_delayed_work(gbcl->battery_monitor_wq,
+			&gbcl->battery_monitor_work,
+			msecs_to_jiffies(gbcl->bcl_poll_interval_msec));
+	}
 }
 
 static void bcl_vph_notification(enum qpnp_tm_state state, void *ctx);
@@ -1181,7 +1190,7 @@ static int bcl_probe(struct platform_device *pdev)
 			pr_err("Requesting  battery_monitor wq failed\n");
 			return 0;
 	}
-	INIT_WORK(&bcl->battery_monitor_work, battery_monitor_work);
+	INIT_DEFERRABLE_WORK(&bcl->battery_monitor_work, battery_monitor_work);
 	if (bcl_mode == BCL_DEVICE_ENABLED)
 		bcl_mode_set(bcl_mode);
 	return 0;
