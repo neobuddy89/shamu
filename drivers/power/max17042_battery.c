@@ -38,6 +38,9 @@
 #include <linux/types.h>
 #include <linux/fs.h>
 #include <linux/debugfs.h>
+#ifdef CONFIG_STATE_HELPER
+#include <linux/state_helper.h>
+#endif
 
 /* Status register bits */
 #define STATUS_POR_BIT         (1 << 1)
@@ -472,6 +475,9 @@ static int max17042_get_property(struct power_supply *psy,
 				val->intval = 1;
 		} else
 			val->intval = ret;
+#ifdef CONFIG_STATE_HELPER
+		batt_level_notify(val->intval);
+#endif
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_FULL:
 		ret = max17042_read_reg(chip->client, MAX17042_FullCAP);

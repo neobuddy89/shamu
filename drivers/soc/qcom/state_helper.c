@@ -180,7 +180,7 @@ void batt_level_notify(int k)
 	if (!helper.enabled)
 		return;
 
-	dprintk("%s: Received new BCL Notification: %u\n",
+	dprintk("%s: Received Battery Level Notification: %u\n",
 			STATE_HELPER, info.batt_level);
 
 	/* Reschedule only if required. */
