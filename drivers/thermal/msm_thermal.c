@@ -1074,9 +1074,12 @@ static void __ref do_core_control(long temp)
 {
 	int i = 0;
 	int ret = 0;
+	uint32_t previous_cpus_offlined = 0;
 
 	if (!core_control_enabled)
 		return;
+
+	previous_cpus_offlined = msm_thermal_info.cpus_offlined;
 
 	mutex_lock(&core_control_mutex);
 	if (msm_thermal_info.core_control_mask &&
@@ -1128,7 +1131,12 @@ static void __ref do_core_control(long temp)
 		}
 	}
 	mutex_unlock(&core_control_mutex);
+#ifdef CONFIG_STATE_HELPER
+	if (previous_cpus_offlined != msm_thermal_info.cpus_offlined)
+		reschedule_helper();
+#endif
 }
+
 /* Call with core_control_mutex locked */
 static int __ref update_offline_cores(int val)
 {
@@ -1177,6 +1185,12 @@ static int __ref update_offline_cores(int val)
 			}
 		}
 	}
+
+#ifdef CONFIG_STATE_HELPER
+	if (previous_cpus_offlined != msm_thermal_info.cpus_offlined)
+		reschedule_helper();
+#endif
+
 	return ret;
 }
 
