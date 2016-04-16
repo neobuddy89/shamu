@@ -20,7 +20,7 @@
 /* Try not to change below values. */
 #define MSM_LIMITER			"msm_limiter"
 #define MSM_LIMITER_MAJOR		5
-#define MSM_LIMITER_MINOR		2
+#define MSM_LIMITER_MINOR		3
 
 /* Recommended to set below values from userspace. */
 #define FREQ_CONTROL			0
@@ -405,7 +405,7 @@ static ssize_t set_suspend_min_freq(struct kobject *kobj,
 			per_cpu(limit, i).suspend_min_freq =
 				min(val, per_cpu(limit, i).resume_max_freq);
 			if (freq_control)
-				update_cpu_min_freq(cpu);
+				update_cpu_min_freq(i);
 		}
 
 		return count;
