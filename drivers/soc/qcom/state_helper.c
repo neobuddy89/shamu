@@ -94,8 +94,8 @@ static void __ref state_helper_work(struct work_struct *work)
 	target_cpus_calc();
 
 	if (info.target_cpus < num_online_cpus()) {
-		for_each_online_cpu(cpu) {
-			if (cpu == 0)
+		for(cpu = NR_CPUS-1; cpu > 0; cpu--) {
+			if (!cpu_online(cpu))
 				continue;
 			dprintk("%s: Switching CPU%u offline\n",
 				STATE_HELPER, cpu);
@@ -104,15 +104,15 @@ static void __ref state_helper_work(struct work_struct *work)
 				break;
 		}
 	} else if (info.target_cpus > num_online_cpus()) {
-		for_each_possible_cpu(cpu) {
+		for(cpu = 1; cpu < NR_CPUS; cpu++) {
+			if (cpu_online(cpu) ||
+				msm_thermal_info.cpus_offlined & BIT(cpu))
+				continue;
+			cpu_up(cpu);
+			dprintk("%s: Switching CPU%u online\n",
+				STATE_HELPER, cpu);
 			if (info.target_cpus <= num_online_cpus())
 				break;
-			if (!cpu_online(cpu) &&
-			!(msm_thermal_info.cpus_offlined & BIT(cpu))) {
-				cpu_up(cpu);
-				dprintk("%s: Switching CPU%u online\n",
-					STATE_HELPER, cpu);
-			}
 		}
 	} else {
 		dprintk("%s: Target already achieved: %u\n",
