@@ -390,6 +390,7 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 		goto bail_system_sleep;
 	}
 
+	us = us + 1;
 	do_div(us, USEC_PER_SEC/SCLK_HZ);
 	msm_mpm_enter_sleep(us, from_idle, &nextcpu);
 	if (from_idle)
