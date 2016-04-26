@@ -153,7 +153,7 @@ static int boost_adjust_notify(struct notifier_block *nb, unsigned long val,
 	if (!ib_min)
 		return NOTIFY_OK;
 
-	min = min(min, policy->max);
+	min = min(ib_min, policy->max);
 
 	pr_debug("CPU%u policy min before boost: %u kHz\n",
 		 cpu, policy->min);
