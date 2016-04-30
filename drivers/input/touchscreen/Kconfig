@@ -1053,6 +1053,9 @@ config TOUCHSCREEN_GT9XX
 
           If unsure, say N.
 
+config WAKE_GESTURES
+        bool "Wake Gestures"
+
 source "drivers/input/touchscreen/gt9xx/Kconfig"
 
 endif
