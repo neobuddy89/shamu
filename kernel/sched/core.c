@@ -5505,7 +5505,6 @@ migration_call(struct notifier_block *nfb, unsigned long action, void *hcpu)
 	case CPU_UP_PREPARE:
 		rq->calc_load_update = calc_load_update;
 		rq->next_balance = jiffies;
-		account_reset_rq(rq);
 		break;
 
 	case CPU_ONLINE:
