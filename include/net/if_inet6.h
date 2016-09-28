@@ -201,6 +201,8 @@ struct inet6_dev {
 	struct timer_list	rs_timer;
 	__u8			rs_probes;
 
+	__s32			rs_interval;	/* in jiffies */
+
 	unsigned long		tstamp; /* ipv6InterfaceTable update timestamp */
 	struct rcu_head		rcu;
 };
