@@ -129,6 +129,10 @@ config FORCE_FAST_CHARGE
 config STATE_NOTIFIER
         bool "State Notifier"
 
+config STATE_HELPER
+        bool "State Helper"
+	depends on STATE_NOTIFIER
+
 config MSM_LIMITER
 	bool "MSM Frequency Limiter Driver"
 	help
