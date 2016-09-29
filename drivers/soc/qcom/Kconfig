@@ -129,6 +129,12 @@ config FORCE_FAST_CHARGE
 config STATE_NOTIFIER
         bool "State Notifier"
 
+config MSM_LIMITER
+	bool "MSM Frequency Limiter Driver"
+	help
+	  The MSM Frequency Limiter Driver controls max frequency limit for each CPU
+	  to desired value on suspend/resume
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM

@@ -40,6 +40,9 @@
 #include <soc/qcom/rpm-smd.h>
 #include <soc/qcom/scm.h>
 #include <linux/sched/rt.h>
+#ifdef CONFIG_MSM_LIMITER
+#include <soc/qcom/limiter.h>
+#endif
 
 #define MAX_RAILS 5
 #define MAX_THRESHOLD 2
@@ -1471,6 +1474,10 @@ static void do_freq_control(long temp)
 	for_each_possible_cpu(cpu) {
 		if (!(msm_thermal_info.bootup_freq_control_mask & BIT(cpu)))
 			continue;
+#ifdef CONFIG_MSM_LIMITER
+		if (max_freq == UINT_MAX)
+			max_freq =  cpuinfo_get_max(cpu);
+#endif
 		pr_info("Limiting CPU%d max frequency to %u. Temp:%ld\n",
 			cpu, max_freq, temp);
 		cpus[cpu].limited_max_freq = max_freq;
@@ -1658,6 +1665,7 @@ static __ref int do_freq_mitigation(void *data)
 	bool skip_mitig = false;
 	uint32_t cpu = 0, max_freq_req = 0, min_freq_req = 0;
 	struct sched_param param = {.sched_priority = MAX_RT_PRIO-1};
+	uint32_t max_core_freq = UINT_MAX;
 
 	sched_setscheduler(current, SCHED_FIFO, &param);
 	while (!kthread_should_stop()) {
@@ -1677,17 +1685,20 @@ static __ref int do_freq_mitigation(void *data)
 			skip_mitig = false;
 
 		for_each_possible_cpu(cpu) {
+#ifdef CONFIG_MSM_LIMITER
+			max_core_freq = cpuinfo_get_max(cpu);
+#endif
 			max_freq_req = (cpus[cpu].max_freq) ?
 					msm_thermal_info.freq_limit :
-					UINT_MAX;
+					max_core_freq;
 			max_freq_req = min(max_freq_req,
 					cpus[cpu].user_max_freq);
 
 			min_freq_req = max(min_freq_limit,
 					cpus[cpu].user_min_freq);
 
-			if (skip_mitig)
-				max_freq_req = UINT_MAX;
+			if (skip_mitig && max_core_freq > max_freq_req)
+				max_freq_req = max_core_freq;
 
 			if ((max_freq_req == cpus[cpu].limited_max_freq)
 				&& (min_freq_req ==
@@ -1707,6 +1718,7 @@ reset_threshold:
 			}
 		}
 	}
+
 	return ret;
 }
 
@@ -2325,17 +2337,21 @@ cx_node_exit:
 static void __ref disable_msm_thermal(void)
 {
 	uint32_t cpu = 0;
+	uint32_t max_core_freq = UINT_MAX;
 
 	/* make sure check_temp is no longer running */
 	cancel_delayed_work_sync(&check_temp_work);
 
 	get_online_cpus();
 	for_each_possible_cpu(cpu) {
-		if (cpus[cpu].limited_max_freq == UINT_MAX &&
+#ifdef CONFIG_MSM_LIMITER
+		max_core_freq = cpuinfo_get_max(cpu);
+#endif
+		if (cpus[cpu].limited_max_freq == max_core_freq &&
 			cpus[cpu].limited_min_freq == 0)
 			continue;
 		pr_info("Max frequency reset for CPU%d\n", cpu);
-		cpus[cpu].limited_max_freq = UINT_MAX;
+		cpus[cpu].limited_max_freq = max_core_freq;
 		cpus[cpu].limited_min_freq = 0;
 		update_cpu_freq(cpu);
 	}
@@ -2604,9 +2620,13 @@ int msm_thermal_init(struct msm_thermal_data *pdata)
 		cpus[cpu].user_offline = 0;
 		cpus[cpu].hotplug_thresh_clear = false;
 		cpus[cpu].max_freq = false;
+#ifndef CONFIG_MSM_LIMITER
 		cpus[cpu].user_max_freq = UINT_MAX;
+#else
+		cpus[cpu].user_max_freq = cpuinfo_get_max(cpu);
+#endif
 		cpus[cpu].user_min_freq = 0;
-		cpus[cpu].limited_max_freq = UINT_MAX;
+		cpus[cpu].limited_max_freq = cpus[cpu].user_max_freq;
 		cpus[cpu].limited_min_freq = 0;
 		cpus[cpu].freq_thresh_clear = false;
 	}
@@ -3441,12 +3461,10 @@ static int msm_thermal_dev_exit(struct platform_device *inp_dev)
 			kfree(thresh[MSM_VDD_RESTRICTION].thresh_list);
 		if (cx_phase_ctrl_enabled)
 			kfree(thresh[MSM_CX_PHASE_CTRL_HOT].thresh_list);
-		if (gfx_warm_phase_ctrl_enabled) {
+		if (gfx_warm_phase_ctrl_enabled)
 			kfree(thresh[MSM_GFX_PHASE_CTRL_WARM].thresh_list);
-		}
-		if (gfx_crit_phase_ctrl_enabled) {
+		if (gfx_crit_phase_ctrl_enabled)
 			kfree(thresh[MSM_GFX_PHASE_CTRL_HOT].thresh_list);
-		}
 		kfree(thresh);
 		thresh = NULL;
 	}
