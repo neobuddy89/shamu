@@ -926,7 +926,7 @@ int q6asm_audio_client_buf_alloc(unsigned int dir,
 	struct audio_buffer *buf;
 	int len;
 
-	if (!(ac) || ((dir != IN) && (dir != OUT)))
+	if (!(ac) || !(bufsz) || ((dir != IN) && (dir != OUT)))
 		return -EINVAL;
 
 	pr_debug("%s: session[%d]bufsz[%d]bufcnt[%d]\n", __func__, ac->session,
