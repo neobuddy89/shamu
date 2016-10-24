@@ -904,11 +904,13 @@ static void __init __of_mpm_init(struct device_node *node)
 
 failed_malloc:
 	for (i = 0; i < MSM_MPM_NR_IRQ_DOMAINS; i++) {
-		mpm_of_map[i].chip->irq_mask = NULL;
-		mpm_of_map[i].chip->irq_unmask = NULL;
-		mpm_of_map[i].chip->irq_disable = NULL;
-		mpm_of_map[i].chip->irq_set_type = NULL;
-		mpm_of_map[i].chip->irq_set_wake = NULL;
+		if (mpm_of_map[i].chip) {
+			mpm_of_map[i].chip->irq_mask = NULL;
+			mpm_of_map[i].chip->irq_unmask = NULL;
+			mpm_of_map[i].chip->irq_disable = NULL;
+			mpm_of_map[i].chip->irq_set_type = NULL;
+			mpm_of_map[i].chip->irq_set_wake = NULL;
+		}
 
 		kfree(unlisted_irqs[i].enabled_irqs);
 		kfree(unlisted_irqs[i].wakeup_irqs);
