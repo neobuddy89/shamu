@@ -139,6 +139,13 @@ config MSM_LIMITER
 	  The MSM Frequency Limiter Driver controls max frequency limit for each CPU
 	  to desired value on suspend/resume
 
+config AUTOSMP
+	bool "Multi-core automatic hotplug support"
+	depends on SMP && HOTPLUG_CPU
+	help
+	  Automatically hotplugs the multiple cpu cores on and off
+	  based on cpu load and suspend state
+
 source "drivers/soc/qcom/memshare/Kconfig"
 
 endif # ARCH_MSM
