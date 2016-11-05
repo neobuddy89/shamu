@@ -105,12 +105,6 @@ struct cpufreq_interactive_tunables {
 	spinlock_t above_hispeed_delay_lock;
 	unsigned int *above_hispeed_delay;
 	int nabove_hispeed_delay;
-	/* Non-zero means indefinite speed boost active */
-	int boost_val;
-	/* Duration of a boot pulse in usecs */
-	int boostpulse_duration_val;
-	/* End time of boost pulse in ktime converted to usecs */
-	u64 boostpulse_endtime;
 	/*
 	 * Max additional time to wait in idle, beyond timer_rate, at speeds
 	 * above minimum before wakeup to reduce speed, or -1 if unnecessary.
@@ -161,7 +155,6 @@ static void cpufreq_interactive_timer_resched(unsigned long cpu,
 		pcpu->policy->governor_data;
 	u64 expires;
 	unsigned long flags;
-	u64 now = ktime_to_us(ktime_get());
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	expires = round_to_nw_start(pcpu->last_evaluated_jiffy, tunables);
@@ -178,9 +171,7 @@ static void cpufreq_interactive_timer_resched(unsigned long cpu,
 	}
 
 	if (tunables->timer_slack_val >= 0 &&
-	    (pcpu->target_freq > pcpu->policy->min ||
-		(pcpu->target_freq == pcpu->policy->min &&
-		 now < tunables->boostpulse_endtime))) {
+	    pcpu->target_freq > pcpu->policy->min) {
 		expires += usecs_to_jiffies(tunables->timer_slack_val);
 		del_timer(&pcpu->cpu_slack_timer);
 		pcpu->cpu_slack_timer.expires = expires;
@@ -200,15 +191,12 @@ static void cpufreq_interactive_timer_start(
 	struct cpufreq_interactive_cpuinfo *pcpu = &per_cpu(cpuinfo, cpu);
 	u64 expires = round_to_nw_start(pcpu->last_evaluated_jiffy, tunables);
 	unsigned long flags;
-	u64 now = ktime_to_us(ktime_get());
 
 	spin_lock_irqsave(&pcpu->load_lock, flags);
 	pcpu->cpu_timer.expires = expires;
 	add_timer_on(&pcpu->cpu_timer, cpu);
 	if (tunables->timer_slack_val >= 0 &&
-	    (pcpu->target_freq > pcpu->policy->min ||
-		(pcpu->target_freq == pcpu->policy->min &&
-		 now < tunables->boostpulse_endtime))) {
+	    pcpu->target_freq > pcpu->policy->min) {
 		expires += usecs_to_jiffies(tunables->timer_slack_val);
 		pcpu->cpu_slack_timer.expires = expires;
 		add_timer_on(&pcpu->cpu_slack_timer, cpu);
@@ -391,7 +379,6 @@ static void cpufreq_interactive_timer(unsigned long data)
 	unsigned int index;
 	unsigned long flags;
 	unsigned int this_hispeed_freq;
-	bool boosted;
 
 	if (!down_read_trylock(&pcpu->enable_sem))
 		return;
@@ -412,10 +399,9 @@ static void cpufreq_interactive_timer(unsigned long data)
 	do_div(cputime_speedadj, delta_time);
 	loadadjfreq = (unsigned int)cputime_speedadj * 100;
 	cpu_load = loadadjfreq / pcpu->policy->cur;
-	boosted = tunables->boost_val || now < tunables->boostpulse_endtime;
 	this_hispeed_freq = max(tunables->hispeed_freq, pcpu->policy->min);
 
-	if (cpu_load >= tunables->go_hispeed_load || boosted) {
+	if (cpu_load >= tunables->go_hispeed_load) {
 		if (pcpu->policy->cur < this_hispeed_freq) {
 			new_freq = this_hispeed_freq;
 		} else {
@@ -485,7 +471,7 @@ static void cpufreq_interactive_timer(unsigned long data)
 	 * expires (or the indefinite boost is turned off).
 	 */
 
-	if (!boosted || new_freq > this_hispeed_freq) {
+	if (new_freq > this_hispeed_freq) {
 		pcpu->floor_freq = new_freq;
 		pcpu->floor_validate_time = now;
 	}
@@ -615,45 +601,6 @@ static int cpufreq_interactive_speedchange_task(void *data)
 	}
 
 	return 0;
-}
-
-static void cpufreq_interactive_boost(void)
-{
-	int i;
-	int anyboost = 0;
-	unsigned long flags[2];
-	struct cpufreq_interactive_cpuinfo *pcpu;
-	struct cpufreq_interactive_tunables *tunables;
-
-	spin_lock_irqsave(&speedchange_cpumask_lock, flags[0]);
-
-	for_each_online_cpu(i) {
-		pcpu = &per_cpu(cpuinfo, i);
-		tunables = pcpu->policy->governor_data;
-
-		spin_lock_irqsave(&pcpu->target_freq_lock, flags[1]);
-		if (pcpu->target_freq < tunables->hispeed_freq) {
-			pcpu->target_freq = tunables->hispeed_freq;
-			cpumask_set_cpu(i, &speedchange_cpumask);
-			pcpu->hispeed_validate_time =
-				ktime_to_us(ktime_get());
-			anyboost = 1;
-		}
-
-		/*
-		 * Set floor freq and (re)start timer for when last
-		 * validated.
-		 */
-
-		pcpu->floor_freq = tunables->hispeed_freq;
-		pcpu->floor_validate_time = ktime_to_us(ktime_get());
-		spin_unlock_irqrestore(&pcpu->target_freq_lock, flags[1]);
-	}
-
-	spin_unlock_irqrestore(&speedchange_cpumask_lock, flags[0]);
-
-	if (anyboost)
-		wake_up_process(speedchange_task);
 }
 
 static int cpufreq_interactive_notifier(
@@ -959,72 +906,6 @@ static ssize_t store_timer_slack(struct cpufreq_interactive_tunables *tunables,
 	return count;
 }
 
-static ssize_t show_boost(struct cpufreq_interactive_tunables *tunables,
-			  char *buf)
-{
-	return sprintf(buf, "%d\n", tunables->boost_val);
-}
-
-static ssize_t store_boost(struct cpufreq_interactive_tunables *tunables,
-			   const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	tunables->boost_val = val;
-
-	if (tunables->boost_val) {
-		trace_cpufreq_interactive_boost("on");
-		cpufreq_interactive_boost();
-	} else {
-		tunables->boostpulse_endtime = ktime_to_us(ktime_get());
-		trace_cpufreq_interactive_unboost("off");
-	}
-
-	return count;
-}
-
-static ssize_t store_boostpulse(struct cpufreq_interactive_tunables *tunables,
-				const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	tunables->boostpulse_endtime = ktime_to_us(ktime_get()) +
-		tunables->boostpulse_duration_val;
-	trace_cpufreq_interactive_boost("pulse");
-	cpufreq_interactive_boost();
-	return count;
-}
-
-static ssize_t show_boostpulse_duration(struct cpufreq_interactive_tunables
-		*tunables, char *buf)
-{
-	return sprintf(buf, "%d\n", tunables->boostpulse_duration_val);
-}
-
-static ssize_t store_boostpulse_duration(struct cpufreq_interactive_tunables
-		*tunables, const char *buf, size_t count)
-{
-	int ret;
-	unsigned long val;
-
-	ret = kstrtoul(buf, 0, &val);
-	if (ret < 0)
-		return ret;
-
-	tunables->boostpulse_duration_val = val;
-	return count;
-}
-
 static ssize_t show_io_is_busy(struct cpufreq_interactive_tunables *tunables,
 		char *buf)
 {
@@ -1087,9 +968,6 @@ show_store_gov_pol_sys(go_hispeed_load);
 show_store_gov_pol_sys(min_sample_time);
 show_store_gov_pol_sys(timer_rate);
 show_store_gov_pol_sys(timer_slack);
-show_store_gov_pol_sys(boost);
-store_gov_pol_sys(boostpulse);
-show_store_gov_pol_sys(boostpulse_duration);
 show_store_gov_pol_sys(io_is_busy);
 show_store_gov_pol_sys(max_freq_hysteresis);
 show_store_gov_pol_sys(align_windows);
@@ -1113,17 +991,9 @@ gov_sys_pol_attr_rw(go_hispeed_load);
 gov_sys_pol_attr_rw(min_sample_time);
 gov_sys_pol_attr_rw(timer_rate);
 gov_sys_pol_attr_rw(timer_slack);
-gov_sys_pol_attr_rw(boost);
-gov_sys_pol_attr_rw(boostpulse_duration);
 gov_sys_pol_attr_rw(io_is_busy);
 gov_sys_pol_attr_rw(max_freq_hysteresis);
 gov_sys_pol_attr_rw(align_windows);
-
-static struct global_attr boostpulse_gov_sys =
-	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_sys);
-
-static struct freq_attr boostpulse_gov_pol =
-	__ATTR(boostpulse, 0200, NULL, store_boostpulse_gov_pol);
 
 /* One Governor instance for entire system */
 static struct attribute *interactive_attributes_gov_sys[] = {
@@ -1134,9 +1004,6 @@ static struct attribute *interactive_attributes_gov_sys[] = {
 	&min_sample_time_gov_sys.attr,
 	&timer_rate_gov_sys.attr,
 	&timer_slack_gov_sys.attr,
-	&boost_gov_sys.attr,
-	&boostpulse_gov_sys.attr,
-	&boostpulse_duration_gov_sys.attr,
 	&io_is_busy_gov_sys.attr,
 	&max_freq_hysteresis_gov_sys.attr,
 	&align_windows_gov_sys.attr,
@@ -1157,9 +1024,6 @@ static struct attribute *interactive_attributes_gov_pol[] = {
 	&min_sample_time_gov_pol.attr,
 	&timer_rate_gov_pol.attr,
 	&timer_slack_gov_pol.attr,
-	&boost_gov_pol.attr,
-	&boostpulse_gov_pol.attr,
-	&boostpulse_duration_gov_pol.attr,
 	&io_is_busy_gov_pol.attr,
 	&max_freq_hysteresis_gov_pol.attr,
 	&align_windows_gov_pol.attr,
@@ -1228,7 +1092,6 @@ static struct cpufreq_interactive_tunables *alloc_tunable(
 	tunables->ntarget_loads = ARRAY_SIZE(default_target_loads);
 	tunables->min_sample_time = DEFAULT_MIN_SAMPLE_TIME;
 	tunables->timer_rate = DEFAULT_TIMER_RATE;
-	tunables->boostpulse_duration_val = DEFAULT_MIN_SAMPLE_TIME;
 	tunables->timer_slack_val = DEFAULT_TIMER_SLACK;
 	tunables->align_windows = true;
 
@@ -1393,7 +1256,7 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 			spin_lock_irqsave(&pcpu->target_freq_lock, flags);
 			if (policy->max < pcpu->target_freq) {
 				pcpu->target_freq = policy->max;
-			} else if (policy->min >= pcpu->target_freq) {
+			} else if (policy->min > pcpu->target_freq) {
 				pcpu->target_freq = policy->min;
 				anyboost = 1;
 			}
