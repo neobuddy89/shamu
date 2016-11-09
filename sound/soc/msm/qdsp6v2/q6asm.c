@@ -282,22 +282,39 @@ static void config_debug_fs_write(struct audio_buffer *ab)
 }
 static void config_debug_fs_init(void)
 {
-	out_buffer = kmalloc(OUT_BUFFER_SIZE, GFP_KERNEL);
-	if (out_buffer == NULL)
-		pr_err("kmalloc() for out_buffer failed");
+	out_buffer = kzalloc(OUT_BUFFER_SIZE, GFP_KERNEL);
+	if (out_buffer == NULL) {
+		pr_err("%s: kzalloc() for out_buffer failed\n", __func__);
+		goto outbuf_fail;
+	}
+	in_buffer = kzalloc(IN_BUFFER_SIZE, GFP_KERNEL);
+	if (in_buffer == NULL) {
+		pr_err("%s: kzalloc() for in_buffer failed\n", __func__);
+		goto inbuf_fail;
+	}
 	out_dentry = debugfs_create_file("audio_out_latency_measurement_node",\
 				S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_output_latency_debug_fops);
-	if (IS_ERR(out_dentry))
-		pr_err("debugfs_create_file failed\n");
-	in_buffer = kmalloc(IN_BUFFER_SIZE, GFP_KERNEL);
-	if (in_buffer == NULL)
-		pr_err("kmalloc() for in_buffer failed");
+	if (IS_ERR(out_dentry)) {
+		pr_err("%s: debugfs_create_file failed\n", __func__);
+		goto file_fail;
+	}
 	in_dentry = debugfs_create_file("audio_in_latency_measurement_node",\
 				S_IRUGO | S_IWUSR | S_IWGRP,\
 				NULL, NULL, &audio_input_latency_debug_fops);
-	if (IS_ERR(in_dentry))
-		pr_err("debugfs_create_file failed\n");
+	if (IS_ERR(in_dentry)) {
+		pr_err("%s: debugfs_create_file failed\n", __func__);
+		goto file_fail;
+	}
+	return;
+file_fail:
+	kfree(in_buffer);
+inbuf_fail:
+	kfree(out_buffer);
+outbuf_fail:
+	in_buffer = NULL;
+	out_buffer = NULL;
+	return;
 }
 #else
 static void config_debug_fs_write(struct audio_buffer *ab)
