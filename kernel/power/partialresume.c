@@ -68,29 +68,21 @@ bool suspend_again_match(const struct list_head *irqs,
 bool suspend_again_consensus(void)
 {
 	struct partial_resume *h;
-	bool consensus = false;
-	int cur_pr;
 
 	BUG_ON(list_empty(&pr_matches));
 	list_for_each_entry(h, &pr_matches, next_match) {
 		h->stats.total++;
-		cur_pr = h->partial_resume(h);
-		if (cur_pr < 0) {
+		if (!h->partial_resume(h)) {
 			pr_debug("%s: partial-resume for %d: false\n", __func__, h->irq);
 			return false;
 		}
-		if (cur_pr > 0) {
-			consensus = true;
-			h->stats.total_yes++;
-			pr_debug("%s: partial-resume for %d: true\n", __func__, h->irq);
-		}
+		h->stats.total_yes++;
+		pr_debug("%s: partial-resume for %d: true\n", __func__, h->irq);
 	}
 
-	if (consensus) {
-		consensus_stats.total_yes++;
-	}
+	consensus_stats.total_yes++;
 
-	return consensus;
+	return true;
 }
 
 

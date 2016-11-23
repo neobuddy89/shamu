@@ -30,14 +30,7 @@ struct partial_resume {
 	struct list_head next_match;
 	int irq;
 	struct partial_resume_stats stats;
-	/* The return value is a tri-state value.
-	 *  -1: reject
-	 *   0: neutral
-	 *   1: agree
-	 * System will suspend again only when there is no reject, and there is at
-	 * least one agree.
-	 */
-	int (*partial_resume)(struct partial_resume *);
+	bool (*partial_resume)(struct partial_resume *);
 };
 
 int register_partial_resume(struct partial_resume *handler);
