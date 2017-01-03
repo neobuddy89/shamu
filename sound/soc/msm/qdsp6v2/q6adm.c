@@ -446,16 +446,26 @@ int adm_get_params(int port_id, uint32_t module_id, uint32_t param_id,
 		uint32_t params_length, char *params)
 {
 	struct adm_cmd_get_pp_params_v5 *adm_params = NULL;
-	int sz, rc = 0, i = 0, index = afe_get_port_index(port_id);
+	int rc = 0, i = 0, index = afe_get_port_index(port_id);
 	int *params_data = (int *)params;
+	uint64_t sz = 0;
 
 	if (index < 0 || index >= AFE_MAX_PORTS) {
 		pr_err("%s: invalid port idx %d port id 0x%x\n",
 			__func__, index, port_id);
 		return -EINVAL;
 	}
-	sz = sizeof(struct adm_cmd_get_pp_params_v5) + params_length;
-	adm_params = kzalloc(sz, GFP_KERNEL);
+
+	sz = (uint64_t)sizeof(struct adm_cmd_get_pp_params_v5) +
+				(uint64_t)params_length;
+	/*
+	 * Check if the value of "sz" (which is ultimately assigned to
+	 * "hdr.pkt_size") crosses U16_MAX.
+	 */
+	if (sz > U16_MAX) {
+		pr_err("%s: Invalid params_length\n", __func__);
+		return -EINVAL;
+	}	adm_params = kzalloc(sz, GFP_KERNEL);
 	if (!adm_params) {
 		pr_err("%s: adm params memory alloc failed", __func__);
 		return -ENOMEM;
