@@ -1480,7 +1480,7 @@ void trace_find_cmdline(int pid, char comm[])
 	arch_spin_lock(&trace_cmdline_lock);
 	map = map_pid_to_cmdline[pid];
 	if (map != NO_CMDLINE_MAP)
-		strlcpy(comm, saved_cmdlines[map], TASK_COMM_LEN-1);
+		strlcpy(comm, saved_cmdlines[map], TASK_COMM_LEN);
 	else
 		strcpy(comm, "<...>");
 
