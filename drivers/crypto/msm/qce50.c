@@ -4754,7 +4754,7 @@ int qce_ablk_cipher_req(void *handle, struct qce_req *c_req)
 	rc = _qce_sps_transfer(pce_dev);
 	if (rc)
 		goto bad;
-		return 0;
+	return 0;
 bad:
 	if (areq->src != areq->dst) {
 		if (pce_dev->dst_nents) {
