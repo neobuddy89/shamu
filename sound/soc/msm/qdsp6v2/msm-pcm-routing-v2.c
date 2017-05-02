@@ -3132,10 +3132,10 @@ static int msm_routing_put_stereo_to_custom_stereo_control(
 					op_FL_ip_FR_weight,
 					op_FR_ip_FL_weight,
 					op_FR_ip_FR_weight);
-				if (rc < 0)
+			if (rc < 0)
 skip_send_custom_stereo:
-					pr_err("%s:err 0x%x, port %d\n",
-						__func__, rc , port_id);
+				pr_err("%s:err 0x%x, port %d\n",
+					__func__, rc , port_id);
 		}
 	}
 	return 0;
