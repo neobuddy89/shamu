@@ -863,10 +863,6 @@ static int tfa9890_get_ch_sel(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static const struct soc_enum tfa9890_mode_enum[] = {
-	SOC_ENUM_SINGLE_EXT(2, tfa9890_mode),
-};
-
 static const struct snd_kcontrol_new tfa9890_left_snd_controls[] = {
 	SOC_SINGLE_TLV("BOOST VolumeL", TFA9890_VOL_CTL_REG,
 			8, 0xff, 0, tlv_step_0_5),

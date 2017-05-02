@@ -3132,10 +3132,10 @@ static int msm_routing_put_stereo_to_custom_stereo_control(
 					op_FL_ip_FR_weight,
 					op_FR_ip_FL_weight,
 					op_FR_ip_FR_weight);
-				if (rc < 0)
+			if (rc < 0)
 skip_send_custom_stereo:
-					pr_err("%s:err 0x%x, port %d\n",
-						__func__, rc , port_id);
+				pr_err("%s:err 0x%x, port %d\n",
+					__func__, rc , port_id);
 		}
 	}
 	return 0;
@@ -3278,7 +3278,7 @@ static const char * const slim0_rx_vi_fb_tx_lch_mux_text[] = {
 	"ZERO", "SLIM4_TX"
 };
 
-static const int const slim0_rx_vi_fb_tx_lch_value[] = {
+static const int slim0_rx_vi_fb_tx_lch_value[] = {
 	MSM_BACKEND_DAI_MAX, MSM_BACKEND_DAI_SLIMBUS_4_TX
 };
 static const struct soc_enum slim0_rx_vi_fb_lch_mux_enum =

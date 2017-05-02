@@ -102,7 +102,7 @@ struct mdm_ctrl {
 struct mdm_ops {
 	struct esoc_clink_ops *clink_ops;
 	int (*config_hw)(struct mdm_ctrl *mdm,
-				const struct esoc_clink_ops const *ops,
+				const struct esoc_clink_ops *ops,
 						struct platform_device *pdev);
 };
 

@@ -49,7 +49,7 @@ static int esoc_msm_restart_handler(struct notifier_block *nb,
 	struct mdm_drv *mdm_drv = container_of(nb, struct mdm_drv,
 					esoc_restart);
 	struct esoc_clink *esoc_clink = mdm_drv->esoc_clink;
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 
 	dev_dbg(&esoc_clink->dev, "Notifying esoc of cold reboot\n");
 	clink_ops->notify(ESOC_PRIMARY_REBOOT, esoc_clink);
@@ -89,7 +89,7 @@ static void mdm_ssr_fn(struct work_struct *work)
 	int ret;
 	struct mdm_drv *mdm_drv = container_of(work, struct mdm_drv, ssr_work);
 	struct esoc_clink *esoc_clink = mdm_drv->esoc_clink;
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 
 	/*
 	 * If esoc bus cannot allow restart, then forcibly shut down the
@@ -109,7 +109,7 @@ static void mdm_crash_shutdown(const struct subsys_desc *mdm_subsys)
 					container_of(mdm_subsys,
 							struct esoc_clink,
 								subsys);
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 	clink_ops->notify(ESOC_PRIMARY_CRASH, esoc_clink);
 }
 
@@ -120,7 +120,7 @@ static int mdm_subsys_shutdown(const struct subsys_desc *crashed_subsys,
 	struct esoc_clink *esoc_clink =
 	 container_of(crashed_subsys, struct esoc_clink, subsys);
 	struct mdm_drv *mdm_drv = esoc_get_drv_data(esoc_clink);
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 
 	if (mdm_drv->mode == CRASH || mdm_drv->mode == PEER_CRASH) {
 		ret = clink_ops->cmd_exe(ESOC_PREPARE_DEBUG,
@@ -149,7 +149,7 @@ static int mdm_subsys_powerup(const struct subsys_desc *crashed_subsys)
 				container_of(crashed_subsys, struct esoc_clink,
 								subsys);
 	struct mdm_drv *mdm_drv = esoc_get_drv_data(esoc_clink);
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 
 	if (!esoc_req_eng_enabled(esoc_clink)) {
 		dev_dbg(&esoc_clink->dev, "Wait for req eng registration\n");
@@ -194,7 +194,7 @@ static int mdm_subsys_ramdumps(int want_dumps,
 	struct esoc_clink *esoc_clink =
 				container_of(crashed_subsys, struct esoc_clink,
 								subsys);
-	const struct esoc_clink_ops const *clink_ops = esoc_clink->clink_ops;
+	const struct esoc_clink_ops *clink_ops = esoc_clink->clink_ops;
 
 	if (want_dumps) {
 		ret = clink_ops->cmd_exe(ESOC_EXE_DEBUG, esoc_clink);
