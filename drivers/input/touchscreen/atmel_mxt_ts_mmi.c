@@ -2499,7 +2499,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 	case STATE_UNKNOWN:
 	case STATE_FLASH:
 		/* no special handling for these states */
-			break;
+		break;
 
 	case STATE_SUSPEND:
 		if (!data->mode_is_wakeable)
@@ -2510,7 +2510,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 #ifdef CONFIG_STATE_NOTIFIER
 		state_suspend();
 #endif
-			break;
+		break;
 
 #ifdef CONFIG_WAKE_GESTURES
 	case STATE_WG:
@@ -2520,7 +2520,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WG);
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
-			break;
+		break;
 #endif
 
 	case STATE_ACTIVE:
@@ -2535,7 +2535,7 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 #ifdef CONFIG_STATE_NOTIFIER
 		state_resume();
 #endif
-			break;
+		break;
 
 	case STATE_STANDBY:
 		mxt_irq_enable(data, false);
@@ -2546,13 +2546,13 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			data->in_bootloader = true;
 
 		mxt_irq_enable(data, false);
-			break;
+		break;
 
 	case STATE_INIT:
 		/* set flag to avoid object specific message handling */
 		if (!data->in_bootloader)
 			data->in_bootloader = true;
-			break;
+		break;
 	}
 
 	pr_debug("state change %s -> %s\n", mxt_state_name(current_state),
