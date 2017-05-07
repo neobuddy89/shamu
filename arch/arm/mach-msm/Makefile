@@ -3,13 +3,13 @@ ifndef CONFIG_ARM_ARCH_TIMER
 obj-y += timer.o
 endif
 obj-$(CONFIG_USE_OF) += board-dt.o
-obj-$(CONFIG_DEBUG_FS) += nohlt.o
+#obj-$(CONFIG_DEBUG_FS) += nohlt.o
 
 obj-y += acpuclock.o
 obj-$(CONFIG_HW_PERF_EVENTS) += perf_trace_counters.o
 obj-$(CONFIG_ARCH_MSM_KRAIT) += msm-krait-l2-accessors.o perf_event_msm_krait_l2.o
 obj-$(CONFIG_ARCH_MSM_KRAIT) += krait-scm.o
-obj-$(CONFIG_DEBUG_FS) += perf_debug.o
+#obj-$(CONFIG_DEBUG_FS) += perf_debug.o
 
 obj-$(CONFIG_SMP) += headsmp.o platsmp.o
 obj-$(CONFIG_HOTPLUG_CPU) += hotplug.o
@@ -19,9 +19,10 @@ obj-$(CONFIG_CPU_V7) += idle-v7.o
 obj-$(CONFIG_MSM_JTAG) += jtag-fuse.o jtag.o
 obj-$(CONFIG_MSM_JTAG_MM) +=  jtag-fuse.o jtag-mm.o
 
-obj-$(CONFIG_MSM_SMD) += smd.o smd_debug.o smd_private.o smd_init_dt.o smsm_debug.o
-obj-$(CONFIG_MSM_SMP2P) += smp2p.o smp2p_debug.o smp2p_gpio.o
-obj-$(CONFIG_MSM_SMP2P_TEST) += smp2p_loopback.o smp2p_test.o smp2p_gpio_test.o smp2p_spinlock_test.o
+obj-$(CONFIG_MSM_SMD) += smd.o smd_private.o smd_init_dt.o
+#obj-$(CONFIG_MSM_SMD) += smd_debug.o smsm_debug.o
+obj-$(CONFIG_MSM_SMP2P) += smp2p.o smp2p_gpio.o smp2p_loopback.o
+obj-$(CONFIG_MSM_SMP2P_TEST) += smp2p_debug.o smp2p_test.o smp2p_gpio_test.o smp2p_spinlock_test.o
 obj-$(CONFIG_MSM_SCM) += scm-boot.o
 obj-$(CONFIG_MSM_XPU_ERR_FATAL) += scm-xpu.o
 obj-$(CONFIG_MSM_PIL) += peripheral-loader.o
@@ -85,9 +86,9 @@ CFLAGS_msm_vibrator.o += -Idrivers/staging/android
 
 obj-$(CONFIG_MSM_LPM_TEST) += test-lpm.o
 obj-$(CONFIG_MSM_RPM_SMD) += rpm-smd.o
-ifdef CONFIG_DEBUG_FS
-obj-$(CONFIG_MSM_RPM_SMD) += rpm-smd-debug.o
-endif
+#ifdef CONFIG_DEBUG_FS
+#obj-$(CONFIG_MSM_RPM_SMD) += rpm-smd-debug.o
+#endif
 obj-$(CONFIG_MSM_MPM_OF) += mpm-of.o
 obj-$(CONFIG_MSM_RPM_STATS_LOG) += rpm_stats.o rpm_master_stat.o
 obj-$(CONFIG_MSM_RPM_RBCPR_STATS_V2_LOG) += rpm_rbcpr_stats_v2.o
