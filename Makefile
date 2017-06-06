@@ -375,10 +375,11 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
 		   -fno-delete-null-pointer-checks \
-		   -Wno-array-bounds \
+		   -Werror-implicit-function-declaration \
+		   -Wno-format-security -Wno-bool-operation \
+		   -Wno-array-bounds -Wno-format-truncation \
+		   -Wno-memset-elt-size -Wno-format-overflow \
 		   -std=gnu89 -mtune=cortex-a15 -mfpu=neon-vfpv4
 
 KBUILD_AFLAGS_KERNEL :=
@@ -580,7 +581,7 @@ all: vmlinux
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
 KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O2 $(call cc-disable-warning,maybe-uninitialized,)
 endif
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
