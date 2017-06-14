@@ -274,7 +274,7 @@ static int htable_create(struct net *net, struct xt_hashlimit_mtinfo1 *minfo,
 	hinfo->net = net;
 
 	INIT_DEFERRABLE_WORK(&hinfo->gc_work, htable_gc);
-	queue_delayed_work(system_power_efficient_wq, &hinfo->gc_work,
+	schedule_delayed_work(&hinfo->gc_work,
 			   msecs_to_jiffies(hinfo->cfg.gc_interval));
 
 	hlist_add_head(&hinfo->node, &hashlimit_net->htables);
@@ -322,8 +322,7 @@ static void htable_gc(struct work_struct *work)
 
 	htable_selective_cleanup(ht, select_gc);
 
-	queue_delayed_work(system_power_efficient_wq,
-			   &ht->gc_work, msecs_to_jiffies(ht->cfg.gc_interval));
+	schedule_delayed_work(&ht->gc_work, msecs_to_jiffies(ht->cfg.gc_interval));
 }
 
 static void htable_remove_proc_entry(struct xt_hashlimit_htable *hinfo)
