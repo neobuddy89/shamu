@@ -144,11 +144,6 @@ static inline bool wq_has_sleeper(wait_queue_head_t *wq)
 	return waitqueue_active(wq);
 }
 
-static inline struct inode *d_inode(const struct dentry *dentry)
-{
-	return dentry->d_inode;
-}
-
 static inline struct dentry *file_dentry(const struct file *file)
 {
 	return file->f_path.dentry;
@@ -2200,7 +2195,8 @@ int do_write_data_page(struct f2fs_io_info *);
 int f2fs_map_blocks(struct inode *, struct f2fs_map_blocks *, int, int);
 int f2fs_fiemap(struct inode *inode, struct fiemap_extent_info *, u64, u64);
 void f2fs_set_page_dirty_nobuffers(struct page *);
-void f2fs_invalidate_page(struct page *, unsigned long);
+void f2fs_invalidate_page(struct page *page, unsigned int offset,
+				      unsigned int length);
 int f2fs_release_page(struct page *, gfp_t);
 
 /*
