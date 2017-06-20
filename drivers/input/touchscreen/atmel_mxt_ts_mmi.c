@@ -2520,10 +2520,16 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 		mxt_set_t7_power_cfg(data, MXT_POWER_CFG_WG);
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
+#ifdef CONFIG_STATE_NOTIFIER
+		state_suspend();
+#endif
 		break;
 #endif
 
 	case STATE_ACTIVE:
+#ifdef CONFIG_STATE_NOTIFIER
+		state_resume();
+#endif
 		if (!data->in_bootloader)
 			mxt_sensor_state_config(data, ACTIVE_IDX);
 		data->enable_reporting = true;
@@ -2532,9 +2538,6 @@ static void mxt_set_sensor_state(struct mxt_data *data, int state)
 			mxt_restore_default_mode(data);
 			pr_debug("Non-persistent mode; restoring default\n");
 		}
-#ifdef CONFIG_STATE_NOTIFIER
-		state_resume();
-#endif
 		break;
 
 	case STATE_STANDBY:
