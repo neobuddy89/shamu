@@ -352,7 +352,6 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 		int index, bool from_idle)
 {
 	struct lpm_system_level *lvl;
-	uint32_t sclk;
 	int ret;
 	uint64_t us = (~0ULL);
 	int dbg_mask;
@@ -392,8 +391,7 @@ static void lpm_system_prepare(struct lpm_system_state *system_state,
 	}
 
 	do_div(us, USEC_PER_SEC/SCLK_HZ);
-	sclk = us;
-	msm_mpm_enter_sleep(sclk, from_idle, &nextcpu);
+	msm_mpm_enter_sleep(us, from_idle, &nextcpu);
 	if (from_idle)
 		time = ktime_to_ns(ktime_get());
 skip_rpm:
