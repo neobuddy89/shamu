@@ -377,10 +377,8 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -fno-delete-null-pointer-checks \
 		   -Werror-implicit-function-declaration \
-		   -Wno-format-security -Wno-bool-operation \
-		   -Wno-array-bounds -Wno-format-truncation \
-		   -Wno-memset-elt-size -Wno-format-overflow \
-		   -std=gnu89 -mtune=cortex-a15 -mfpu=neon-vfpv4
+		   -Wno-format-security \
+		   -std=gnu89
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -578,11 +576,24 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
+# Strip linker
+LDFLAGS		+= --strip-debug -O2
+
+# Optimization flags
+KBUILD_CFLAGS	+= -g0 -DNDEBUG \
+                   -mtune=cortex-a15 -mcpu=cortex-a15 -mfpu=neon-vfpv4
+
+# These flags need a special toolchain so split them off
+KBUILD_CFLAGS	+= $(call cc-disable-warning,format-truncation,)
+
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= -Os
 else
-KBUILD_CFLAGS	+= -O2 $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= -O2
 endif
+
+# Disable all maybe-uninitialized warnings
+KBUILD_CFLAGS	+= $(call cc-disable-warning,maybe-uninitialized,)
 
 include $(srctree)/arch/$(SRCARCH)/Makefile
 
