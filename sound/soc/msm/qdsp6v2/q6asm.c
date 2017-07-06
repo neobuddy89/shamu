@@ -1421,7 +1421,6 @@ static int32_t q6asm_callback(struct apr_client_data *data, void *priv)
 				__func__, ac);
 		return -EINVAL;
 	}
-
 	if (ac->session <= 0 || ac->session > 8) {
 		pr_err("%s: Session ID is invalid, session = %d\n", __func__,
 			ac->session);
