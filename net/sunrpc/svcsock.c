@@ -85,7 +85,8 @@ static void svc_reclassify_socket(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
 
-	if (WARN_ON_ONCE(!sock_allow_reclassification(sk)))
+	WARN_ON_ONCE(sock_owned_by_user(sk));
+	if (sock_owned_by_user(sk))
 		return;
 
 	switch (sk->sk_family) {

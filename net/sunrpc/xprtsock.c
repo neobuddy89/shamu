@@ -1794,7 +1794,8 @@ static inline void xs_reclassify_socket6(struct socket *sock)
 
 static inline void xs_reclassify_socket(int family, struct socket *sock)
 {
-	if (WARN_ON_ONCE(!sock_allow_reclassification(sock->sk)))
+	WARN_ON_ONCE(sock_owned_by_user(sock->sk));
+	if (sock_owned_by_user(sock->sk))
 		return;
 
 	switch (family) {
