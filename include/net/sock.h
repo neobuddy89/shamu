@@ -1471,7 +1471,7 @@ do {									\
 	lockdep_init_map(&(sk)->sk_lock.dep_map, (name), (key), 0);	\
 } while (0)
 
-static inline bool lockdep_sock_is_held(const struct sock *csk)
+static bool lockdep_sock_is_held(const struct sock *csk)
 {
 	struct sock *sk = (struct sock *)csk;
 
