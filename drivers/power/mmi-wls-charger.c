@@ -206,13 +206,11 @@ static void mmi_wls_chrg_worker(struct work_struct *work)
 	int powered = 0;
 	int wired = 0;
 	int taper_reached;
-	struct delayed_work *dwork;
 	struct mmi_wls_chrg_chip *chip;
 
-	dwork = to_delayed_work(work);
-	chip = container_of(dwork,
+	chip = container_of(work,
 			    struct mmi_wls_chrg_chip,
-			    mmi_wls_chrg_work);
+			    mmi_wls_chrg_work.work);
 
 	if (!chip->dc_psy || !chip->usb_psy || !chip->batt_psy) {
 		mmi_wls_chrg_get_psys(chip);
@@ -407,7 +405,7 @@ static void mmi_wls_charger_external_power_changed(struct power_supply *psy)
 
 	dev_dbg(chip->dev, "mmi_wls_charger External Change Reported!\n");
 
-	schedule_delayed_work(&chip->mmi_wls_chrg_work,
+	queue_delayed_work(system_power_efficient_wq, &chip->mmi_wls_chrg_work,
 			      msecs_to_jiffies(100));
 	return;
 }
@@ -642,7 +640,7 @@ static int mmi_wls_chrg_probe(struct i2c_client *client,
 
 	chip->force_shutdown = false;
 
-	schedule_delayed_work(&chip->mmi_wls_chrg_work,
+	queue_delayed_work(system_power_efficient_wq, &chip->mmi_wls_chrg_work,
 			      msecs_to_jiffies(100));
 
 	return 0;
