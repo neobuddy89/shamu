@@ -546,6 +546,7 @@ uint64_t a4xx_alwayson_counter_read(struct adreno_device *adreno_dev)
 static void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 {
 	struct kgsl_device *device = &adreno_dev->dev;
+	unsigned int reg;
 
 	switch (bit) {
 	case A4XX_INT_RBBM_ETS_MS_TIMEOUT:
@@ -576,6 +577,18 @@ static void a4xx_err_callback(struct adreno_device *adreno_dev, int bit)
 	case A4XX_INT_RBBM_DPM_THERMAL_RED_ERR:
 		KGSL_DRV_CRIT_RATELIMIT(device, "RBBM: dpm thermal red\n");
 		break;
+	case A4XX_INT_CP_HW_FAULT:
+	{
+		kgsl_regread(device, A4XX_CP_HW_FAULT, &reg);
+		KGSL_DRV_CRIT_RATELIMIT(device, "CP | Ringbuffer HW fault | status=%x\n", reg);
+		/*
+		* mask off this interrupt since it can spam, it will be
+		* turned on again when device resets
+		*/
+		adreno_writereg(adreno_dev, ADRENO_REG_RBBM_INT_0_MASK,
+		adreno_dev->gpudev->irq->mask & ~(1 << A4XX_INT_CP_HW_FAULT));
+		break;
+	}
 	default:
 		return;
 	}
@@ -1152,6 +1165,7 @@ static struct adreno_coresight a4xx_coresight = {
 	 (1 << A4XX_INT_CP_OPCODE_ERR) |		\
 	 (1 << A3XX_INT_CP_RESERVED_BIT_ERROR) |	\
 	 (1 << A3XX_INT_CP_HW_FAULT) |			\
+	 (1 << A4XX_INT_CP_HW_FAULT) |			\
 	 (1 << A3XX_INT_CP_IB1_INT) |			\
 	 (1 << A3XX_INT_CP_IB2_INT) |			\
 	 (1 << A3XX_INT_CP_RB_INT) |			\
@@ -1180,7 +1194,7 @@ static struct adreno_irq_funcs a4xx_irq_funcs[] = {
 	ADRENO_IRQ_CALLBACK(a4xx_err_callback), /* 9 - CP_OPCODE_ERROR */
 	/* 10 - CP_RESERVED_BIT_ERROR */
 	ADRENO_IRQ_CALLBACK(a3xx_a4xx_err_callback),
-	ADRENO_IRQ_CALLBACK(a3xx_a4xx_err_callback), /* 11 - CP_HW_FAULT */
+	ADRENO_IRQ_CALLBACK(a4xx_err_callback), /* 11 - CP_HW_FAULT */
 	ADRENO_IRQ_CALLBACK(NULL), /* 12 - CP_DMA */
 	ADRENO_IRQ_CALLBACK(a3xx_cp_callback), /* 13 - CP_IB2_INT */
 	ADRENO_IRQ_CALLBACK(a3xx_cp_callback), /* 14 - CP_IB1_INT */
