@@ -519,7 +519,7 @@ int register_bw_hwmon(struct device *dev, struct bw_hwmon *hwmon)
 	}
 
 	node->tolerance_percent = 10;
-	node->guard_band_mbps = 100;
+	node->guard_band_mbps = 70;
 	node->decay_rate = 90;
 	node->io_percent = 16;
 	node->bw_step = 190;
