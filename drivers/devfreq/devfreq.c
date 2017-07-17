@@ -791,8 +791,12 @@ static ssize_t store_governor(struct device *dev, struct device_attribute *attr,
 			goto out;
 		}
 	}
+
+	mutex_lock(&df->lock);
 	df->data = find_governor_data(df->profile, str_governor);
 	df->governor = governor;
+	mutex_unlock(&df->lock);
+
 	strncpy(df->governor_name, governor->name, DEVFREQ_NAME_LEN);
 	ret = df->governor->event_handler(df, DEVFREQ_GOV_START, NULL);
 	if (ret)
