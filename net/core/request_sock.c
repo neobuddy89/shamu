@@ -76,14 +76,23 @@ void __reqsk_queue_destroy(struct request_sock_queue *queue)
 	kvfree(queue->listen_opt);
 }
 
-void reqsk_queue_destroy(struct request_sock_queue *queue)
+static inline struct listen_sock *reqsk_queue_yank_listen_sk(
+		struct request_sock_queue *queue)
 {
-	/* make all the listen_opt local to us */
 	struct listen_sock *lopt;
 
 	write_lock_bh(&queue->syn_wait_lock);
 	lopt = queue->listen_opt;
 	queue->listen_opt = NULL;
+	write_unlock_bh(&queue->syn_wait_lock);
+
+	return lopt;
+}
+
+void reqsk_queue_destroy(struct request_sock_queue *queue)
+{
+	/* make all the listen_opt local to us */
+	struct listen_sock *lopt = reqsk_queue_yank_listen_sk(queue);
 
 	if (lopt->qlen != 0) {
 		unsigned int i;
@@ -101,7 +110,6 @@ void reqsk_queue_destroy(struct request_sock_queue *queue)
 
 	WARN_ON(lopt->qlen != 0);
 	kvfree(lopt);
-	write_unlock_bh(&queue->syn_wait_lock);
 }
 
 /*
