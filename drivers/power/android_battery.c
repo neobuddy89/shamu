@@ -443,7 +443,7 @@ static void android_bat_monitor_work(struct work_struct *work)
 				POWER_SUPPLY_STATUS_NOT_CHARGING;
 			android_bat_enable_charging(battery, false);
 
-			pr_info("battery: Not charging, health=%d\n",
+			pr_info("battery: Not charging, health=%u\n",
 				battery->batt_health);
 			break;
 		default:
@@ -471,7 +471,7 @@ static void android_bat_monitor_work(struct work_struct *work)
 
 	android_bat_charging_timer(battery);
 	get_monotonic_boottime(&cur_time);
-	pr_info("battery: l=%d v=%d c=%d temp=%s%ld.%ld h=%d st=%d%s ct=%lu type=%s\n",
+	pr_info("battery: l=%d v=%d c=%d temp=%s%d.%u h=%u st=%d%s ct=%lu type=%s\n",
 		battery->batt_soc, battery->batt_vcell/1000,
 		battery->batt_current, battery->batt_temp < 0 ? "-" : "",
 		abs(battery->batt_temp / 10), abs(battery->batt_temp % 10),
@@ -507,7 +507,7 @@ static int android_power_debug_dump(struct seq_file *s, void *unused)
 	android_bat_update_data(battery);
 	get_monotonic_boottime(&cur_time);
 	mutex_lock(&android_bat_state_lock);
-	seq_printf(s, "l=%d v=%d c=%d temp=%s%ld.%ld h=%d st=%d%s ct=%lu type=%s\n",
+	seq_printf(s, "l=%d v=%d c=%d temp=%s%d.%u h=%u st=%d%s ct=%lu type=%s\n",
 		   battery->batt_soc, battery->batt_vcell/1000,
 		   battery->batt_current, battery->batt_temp < 0 ? "-" : "",
 		   abs(battery->batt_temp / 10), abs(battery->batt_temp % 10),
