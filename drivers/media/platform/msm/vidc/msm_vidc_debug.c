@@ -144,7 +144,10 @@ static const struct file_operations ssr_fops = {
 
 struct dentry *msm_vidc_debugfs_init_drv(void)
 {
-	struct dentry *dir = debugfs_create_dir("msm_vidc", NULL);
+	struct dentry *dir = NULL;
+
+	mutex_init(&dbg_buf.lock);
+	dir = debugfs_create_dir("msm_vidc", NULL);
 	if (IS_ERR_OR_NULL(dir)) {
 		dir = NULL;
 		goto failed_create_dir;
