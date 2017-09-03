@@ -387,17 +387,6 @@ long msm_isp_ioctl(struct v4l2_subdev *sd,
 	long rc = 0;
 	struct vfe_device *vfe_dev = v4l2_get_subdevdata(sd);
 
-	if (!vfe_dev || !vfe_dev->vfe_vbif_base ||
-		!vfe_dev->vfe_base) {
-		pr_err("%s:%d failed: invalid params %pK\n",
-			__func__, __LINE__, vfe_dev);
-		if (vfe_dev)
-			pr_err("%s:%d failed %pK %pK\n", __func__,
-				__LINE__, vfe_dev->vfe_base,
-				vfe_dev->vfe_vbif_base);
-		return -EINVAL;
-	}
-
 	/* Use real time mutex for hard real-time ioctls such as
 	 * buffer operations and register updates.
 	 * Use core mutex for other ioctls that could take
@@ -686,6 +675,13 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 				reg_cfg_cmd->u.dmi_info.len / 2;
 
 		for (i = 0; i < reg_cfg_cmd->u.dmi_info.len/4; i++) {
+			if (reg_cfg_cmd->cmd_type == VFE_READ_DMI_64BIT) {
+				hi_val = msm_camera_io_r(vfe_dev->vfe_base +
+					vfe_dev->hw_info->dmi_reg_offset);
+				*hi_tbl_ptr = hi_val;
+				hi_tbl_ptr += 2;
+			}
+
 			lo_val = msm_camera_io_r(vfe_dev->vfe_base +
 					vfe_dev->hw_info->dmi_reg_offset + 0x4);
 
@@ -695,43 +691,9 @@ static int msm_isp_send_hw_cmd(struct vfe_device *vfe_dev,
 				lo_val |= lo_val1 << 16;
 			}
 			*lo_tbl_ptr++ = lo_val;
-
-			if (reg_cfg_cmd->cmd_type == VFE_READ_DMI_64BIT) {
-				hi_val = msm_camera_io_r(vfe_dev->vfe_base +
-					vfe_dev->hw_info->dmi_reg_offset);
-				*hi_tbl_ptr = hi_val;
-				hi_tbl_ptr += 2;
+			if (reg_cfg_cmd->cmd_type == VFE_READ_DMI_64BIT)
 				lo_tbl_ptr++;
-			}
-
 		}
-		break;
-	}
-	case VFE_HW_UPDATE_LOCK: {
-		uint32_t update_id =
-			vfe_dev->axi_data.src_info[VFE_PIX_0].last_updt_frm_id;
-		if (vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id != *cfg_data
-			|| update_id == *cfg_data) {
-			pr_err("hw update lock failed,acquire id %u\n",
-				*cfg_data);
-			pr_err("hw update lock failed,current id %u\n",
-				vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
-			pr_err("hw update lock failed,last id %u\n",
-				update_id);
-			return -EINVAL;
-		}
-		break;
-	}
-	case VFE_HW_UPDATE_UNLOCK: {
-		if (vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id
-			!= *cfg_data) {
-			pr_err("hw update across frame boundary,begin id %u\n",
-				*cfg_data);
-			pr_err("hw update across frame boundary,end id %u\n",
-				vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id);
-		}
-		vfe_dev->axi_data.src_info[VFE_PIX_0].last_updt_frm_id =
-			vfe_dev->axi_data.src_info[VFE_PIX_0].frame_id;
 		break;
 	}
 	case VFE_READ: {
@@ -829,7 +791,7 @@ int msm_isp_proc_cmd(struct vfe_device *vfe_dev, void *arg)
 	}
 
 	for (i = 0; i < proc_cmd->num_cfg; i++)
-		rc = msm_isp_send_hw_cmd(vfe_dev, &reg_cfg_cmd[i],
+		msm_isp_send_hw_cmd(vfe_dev, &reg_cfg_cmd[i],
 			cfg_data, proc_cmd->cmd_len);
 
 	if (copy_to_user(proc_cmd->cfg_data,
@@ -1275,17 +1237,10 @@ int msm_isp_open_node(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 	mutex_lock(&vfe_dev->realtime_mutex);
 	mutex_lock(&vfe_dev->core_mutex);
 
-	if (vfe_dev->vfe_open_cnt++ &&
-		vfe_dev->vfe_base && vfe_dev->vfe_vbif_base) {
+	if (vfe_dev->vfe_open_cnt++) {
 		mutex_unlock(&vfe_dev->core_mutex);
 		mutex_unlock(&vfe_dev->realtime_mutex);
 		return 0;
-	}
-
-	if (vfe_dev->vfe_base || vfe_dev->vfe_vbif_base) {
-		vfe_dev->vfe_open_cnt = 0;
-		vfe_dev->vfe_base = NULL;
-		vfe_dev->vfe_vbif_base = NULL;
 	}
 
 	if (vfe_dev->hw_info->vfe_ops.core_ops.init_hw(vfe_dev) < 0) {

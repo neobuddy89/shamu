@@ -104,7 +104,6 @@ struct msm_session {
 	 * session struct msm_stream */
 	struct msm_queue_head stream_q;
 	struct mutex lock;
-	struct mutex lock_q;
 };
 
 int msm_post_event(struct v4l2_event *event, int timeout);

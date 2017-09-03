@@ -47,11 +47,8 @@ static struct msm_isp_bufq *msm_isp_get_bufq(
 {
 	struct msm_isp_bufq *bufq = NULL;
 	uint32_t bufq_index = bufq_handle & 0xFF;
-
-	/* bufq_handle cannot be 0 */
-	if ((bufq_handle == 0) ||
-		(bufq_index > buf_mgr->num_buf_q))
-		return NULL;
+	if (bufq_index > buf_mgr->num_buf_q)
+		return bufq;
 
 	bufq = &buf_mgr->bufq[bufq_index];
 	if (bufq->bufq_handle == bufq_handle)
@@ -1050,11 +1047,6 @@ int msm_isp_buf_mgr_debug(struct msm_isp_buf_mgr *buf_mgr)
 				buf_mgr->bufq[i].buf_type);
 			for (j = 0; j < buf_mgr->bufq[i].num_bufs; j++) {
 				bufs = &buf_mgr->bufq[i].bufs[j];
-				if (!bufs) {
-					pr_err("bufs at %d is NULL breaking\n",
-						j);
-					break;
-				}
 				pr_err("%s:%d buf_idx %d, frame_id %d,",
 					__func__, j, bufs->buf_idx,
 					bufs->frame_id);

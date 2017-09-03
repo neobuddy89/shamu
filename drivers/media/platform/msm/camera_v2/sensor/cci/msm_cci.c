@@ -26,8 +26,8 @@
 #define V4L2_IDENT_CCI 50005
 #define CCI_I2C_QUEUE_0_SIZE 64
 #define CCI_I2C_QUEUE_1_SIZE 16
-#define CYCLES_PER_MICRO_SEC_DEFAULT 4915
-#define CCI_MAX_DELAY 1000000
+#define CYCLES_PER_MICRO_SEC 4915
+#define CCI_MAX_DELAY 10000
 
 #define CCI_TIMEOUT msecs_to_jiffies(200)
 
@@ -51,21 +51,22 @@ static struct v4l2_subdev *g_cci_subdev;
 
 static struct msm_cam_clk_info cci_clk_info[CCI_NUM_CLK_MAX];
 
-static int32_t msm_cci_set_clk_param(struct cci_device *cci_dev,
+static void msm_cci_set_clk_param(struct cci_device *cci_dev,
 	struct msm_camera_cci_ctrl *c_ctrl)
 {
 	struct msm_cci_clk_params_t *clk_params = NULL;
 	enum cci_i2c_master_t master = c_ctrl->cci_info->cci_i2c_master;
 	enum i2c_freq_mode_t i2c_freq_mode = c_ctrl->cci_info->i2c_freq_mode;
-	int32_t rc = 0;
 
 	if ((i2c_freq_mode >= I2C_MAX_MODES) || (i2c_freq_mode < 0)) {
-		pr_err("%s:%d Invalid i2c_freq_mode =%d\n",
+		pr_err("%s:%d invalid i2c_freq_mode %d\n",
 			__func__, __LINE__, i2c_freq_mode);
-		return -EINVAL;
+		return;
 	}
+
 	if (cci_dev->master_clk_init[master])
-		return rc;
+		return;
+
 	clk_params = &cci_dev->cci_clk_params[i2c_freq_mode];
 
 	if (MASTER_0 == master) {
@@ -100,7 +101,7 @@ static int32_t msm_cci_set_clk_param(struct cci_device *cci_dev,
 			cci_dev->base + CCI_I2C_M1_MISC_CTL_ADDR);
 	}
 	cci_dev->master_clk_init[master] = 1;
-	return rc;
+	return;
 }
 
 static void msm_cci_flush_queue(struct cci_device *cci_dev,
@@ -264,7 +265,7 @@ static int32_t msm_cci_data_queue(struct cci_device *cci_dev,
 				master * 0x200 + queue * 0x100);
 		}
 		if ((delay > 0) && (delay < CCI_MAX_DELAY)) {
-			cmd = (uint32_t)((delay * cci_dev->cycles_per_us) /
+			cmd = (uint32_t)((delay * CYCLES_PER_MICRO_SEC) /
 				0x100);
 			cmd <<= 4;
 			cmd |= CCI_I2C_WAIT_CMD;
@@ -733,12 +734,7 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 		CDBG("%s ref_count %d\n", __func__, cci_dev->ref_count);
 		master = c_ctrl->cci_info->cci_i2c_master;
 		CDBG("%s:%d master %d\n", __func__, __LINE__, master);
-		rc = msm_cci_set_clk_param(cci_dev, c_ctrl);
-		if (rc < 0) {
-			pr_err("%s:%d msm_cci_set_clk_parm failed rc = %d\n",
-				__func__, __LINE__, rc);
-			return rc;
-		}
+		msm_cci_set_clk_param(cci_dev, c_ctrl);
 		if (master < MASTER_MAX && master >= 0) {
 			mutex_lock(&cci_dev->cci_master_info[master].mutex);
 			/* Set reset pending flag to TRUE */
@@ -800,13 +796,7 @@ static int32_t msm_cci_init(struct v4l2_subdev *sd,
 
 	for (i = 0; i < MASTER_MAX; i++)
 		cci_dev->master_clk_init[i] = 0;
-	rc = msm_cci_set_clk_param(cci_dev, c_ctrl);
-	if (rc < 0) {
-		pr_err("%s:%d msm_cci_set_clk_parm failed rc = %d\n",
-			__func__, __LINE__, rc);
-		return rc;
-	}
-
+	msm_cci_set_clk_param(cci_dev, c_ctrl);
 	msm_camera_io_w(CCI_IRQ_MASK_0_RMSK,
 		cci_dev->base + CCI_IRQ_MASK_0_ADDR);
 	msm_camera_io_w(CCI_IRQ_MASK_0_RMSK,
@@ -1249,21 +1239,6 @@ static int msm_cci_get_clk_info(struct cci_device *cci_dev,
 	return 0;
 }
 
-static uint32_t msm_get_cycles_per_ms(void)
-{
-	int i = 0;
-	for (i = 0; i < CCI_NUM_CLK_MAX; i++) {
-		if (!strcmp(cci_clk_info[i].clk_name, "cci_src_clk")) {
-			CDBG("%s:%d i %d cci_src_clk\n",
-				__func__, __LINE__, i);
-			return ((cci_clk_info[i].clk_rate/1000)*256)/1000;
-		}
-	}
-	pr_err("%s:%d, failed: Can use default: %d",
-		__func__, __LINE__, CYCLES_PER_MICRO_SEC_DEFAULT);
-	return CYCLES_PER_MICRO_SEC_DEFAULT;
-}
-
 static int msm_cci_probe(struct platform_device *pdev)
 {
 	struct cci_device *new_cci_dev;
@@ -1291,7 +1266,6 @@ static int msm_cci_probe(struct platform_device *pdev)
 		return -EFAULT;
 	}
 
-	new_cci_dev->cycles_per_us = msm_get_cycles_per_ms();
 	new_cci_dev->ref_count = 0;
 	new_cci_dev->mem = platform_get_resource_byname(pdev,
 					IORESOURCE_MEM, "cci");

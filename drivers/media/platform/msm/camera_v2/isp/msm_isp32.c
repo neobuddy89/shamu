@@ -108,7 +108,6 @@ static int msm_vfe32_init_hardware(struct vfe_device *vfe_dev)
 	return rc;
 irq_req_failed:
 	iounmap(vfe_dev->vfe_base);
-	vfe_dev->vfe_base = NULL;
 vfe_remap_failed:
 	if (vfe_dev->vfe_clk_idx == 1)
 		msm_cam_clk_enable(&vfe_dev->pdev->dev,
@@ -132,7 +131,6 @@ static void msm_vfe32_release_hardware(struct vfe_device *vfe_dev)
 	free_irq(vfe_dev->vfe_irq->start, vfe_dev);
 	tasklet_kill(&vfe_dev->vfe_tasklet);
 	iounmap(vfe_dev->vfe_base);
-	vfe_dev->vfe_base = NULL;
 	if (vfe_dev->vfe_clk_idx == 1)
 		msm_cam_clk_enable(&vfe_dev->pdev->dev,
 				msm_vfe32_1_clk_info, vfe_dev->vfe_clk,
@@ -151,7 +149,7 @@ static void msm_vfe32_init_hardware_reg(struct vfe_device *vfe_dev)
 	msm_camera_io_w(0x07FFFFFF, vfe_dev->vfe_base + 0xC);
 	/* BUS_CFG */
 	msm_camera_io_w(0x00000009, vfe_dev->vfe_base + 0x3C);
-	msm_camera_io_w(0x01000021, vfe_dev->vfe_base + 0x1C);
+	msm_camera_io_w(0x01000025, vfe_dev->vfe_base + 0x1C);
 	msm_camera_io_w_mb(0x1CFFFFFF, vfe_dev->vfe_base + 0x20);
 	msm_camera_io_w(0xFFFFFFFF, vfe_dev->vfe_base + 0x24);
 	msm_camera_io_w_mb(0x1FFFFFFF, vfe_dev->vfe_base + 0x28);
@@ -617,12 +615,8 @@ static void msm_vfe32_update_camif_state(
 	if (update_state == NO_UPDATE)
 		return;
 
+	val = msm_camera_io_r(vfe_dev->vfe_base + 0x1E4);
 	if (update_state == ENABLE_CAMIF) {
-		val = msm_camera_io_r(vfe_dev->vfe_base + 0x1C);
-		val |= 0x1;
-		msm_camera_io_w_mb(val, vfe_dev->vfe_base + 0x1C);
-
-		val = msm_camera_io_r(vfe_dev->vfe_base + 0x1E4);
 		bus_en =
 		((vfe_dev->axi_data.src_info[
 			VFE_PIX_0].raw_stream_count > 0) ? 1 : 0);
