@@ -78,7 +78,6 @@
 #define MAX17050_CFG_REV_MASK	0x0007
 
 #define MAX17050_FORCE_POR	0x000F
-#define MAX17050_POR_WAIT_MS	20
 
 #define INIT_DATA_PROPERTY		"maxim,regs-init-data"
 #define CONFIG_NODE			"maxim,configuration"
@@ -138,10 +137,7 @@ struct max17042_chip {
 	int charge_full_des;
 	int taper_reached;
 	bool factory_mode;
-	int last_fullcap;
 };
-
-static irqreturn_t max17042_thread_handler(int id, void *dev);
 
 static void max17042_stay_awake(struct max17042_wakeup_source *source)
 {
@@ -479,18 +475,6 @@ static int max17042_get_property(struct power_supply *psy,
 			return ret;
 
 		val->intval = ret * 1000 / 2;
-
-		if ((val->intval * 2) < chip->charge_full_des) {
-			dev_warn(&chip->client->dev,
-				 "Error fullcap too small! Forcing POR!\n");
-			dev_warn(&chip->client->dev,
-				 "FullCap %d mAhr\n",
-				  val->intval * 2);
-			max17042_write_reg(chip->client, MAX17042_VFSOC0Enable,
-					   MAX17050_FORCE_POR);
-			msleep(MAX17050_POR_WAIT_MS);
-			max17042_thread_handler(0, (void *)chip);
-		}
 		break;
 	case POWER_SUPPLY_PROP_CHARGE_COUNTER:
 		ret = max17042_read_charge_counter(chip->client, 1);
@@ -825,17 +809,8 @@ static inline void max17042_override_por_values(struct max17042_chip *chip)
 	max17042_override_por(client, MAX17042_MiscCFG, config->misc_cfg);
 	max17042_override_por(client, MAX17042_MaskSOC, config->masksoc);
 
-	if (chip->last_fullcap != -EINVAL) {
-		max17042_override_por(client, MAX17042_FullCAP,
-				      chip->last_fullcap);
-		max17042_override_por(client, MAX17042_FullCAPNom,
-				      chip->last_fullcap);
-	} else {
-		max17042_override_por(client, MAX17042_FullCAP,
-				      config->fullcap);
-		max17042_override_por(client, MAX17042_FullCAPNom,
-				      config->fullcapnom);
-	}
+	max17042_override_por(client, MAX17042_FullCAP, config->fullcap);
+	max17042_override_por(client, MAX17042_FullCAPNom, config->fullcapnom);
 	if (chip->chip_type == MAX17042)
 		max17042_override_por(client, MAX17042_SOC_empty,
 						config->socempty);
@@ -1105,13 +1080,6 @@ static irqreturn_t max17042_thread_handler(int id, void *dev)
 	}
 
 	val = max17042_read_reg(chip->client, MAX17042_STATUS);
-	if ((val & STATUS_POR_BIT) && chip->init_complete) {
-		dev_warn(&chip->client->dev, "POR Detected, Loading Config\n");
-		chip->init_complete = 0;
-		schedule_work(&chip->work);
-
-		return IRQ_HANDLED;
-	}
 	if ((val & STATUS_INTR_SOCMIN_BIT) ||
 		(val & STATUS_INTR_SOCMAX_BIT)) {
 		dev_info(&chip->client->dev, "SOC threshold INTR\n");
@@ -1705,21 +1673,6 @@ static void iterm_work(struct work_struct *work)
 
 		fullcap = ret & 0xFFFF;
 
-		/* Check that FullCap */
-		/* is not less then half of Design Capacity */
-		if ((fullcap * 1000) < chip->charge_full_des) {
-			dev_warn(&chip->client->dev,
-				 "Error fullcap too small! Forcing POR!\n");
-			dev_warn(&chip->client->dev,
-				 "FullCap %d mAhr\n",
-				 fullcap / 2);
-			max17042_write_reg(chip->client, MAX17042_VFSOC0Enable,
-					   MAX17050_FORCE_POR);
-			msleep(MAX17050_POR_WAIT_MS);
-			max17042_thread_handler(0, (void *)chip);
-			goto iterm_fail;
-		}
-
 		/* Catch Increasing FullCap*/
 		if (((fullcap * 1000) / 2) > cfd_max) {
 			dev_warn(&chip->client->dev,
@@ -1832,17 +1785,16 @@ static void iterm_work(struct work_struct *work)
 	/* is not less then half of Design Capacity */
 	if (((repcap * 1000) < chip->charge_full_des) ||
 	    ((fullcap * 1000) < chip->charge_full_des)) {
+		dev_warn(&chip->client->dev, "Error repcap too small!\n");
 		dev_warn(&chip->client->dev,
-			 "Error fullcap too small! Forcing POR!\n");
-		dev_warn(&chip->client->dev,
-			 "FullCap %d mAhr\n",
-			 fullcap / 2);
-		max17042_write_reg(chip->client, MAX17042_VFSOC0Enable,
-				   MAX17050_FORCE_POR);
-		msleep(MAX17050_POR_WAIT_MS);
-		max17042_thread_handler(0, (void *)chip);
-
-		goto iterm_fail;
+			 "RepCap %d mAhr FullCap %d mAhr\n",
+			 repcap / 2, fullcap / 2);
+		repcap = (chip->charge_full_des * 2) / 1000;
+		ret = max17042_write_reg(chip->client,
+					 MAX17042_RepCap, repcap);
+		if (ret < 0)
+			dev_err(&chip->client->dev,
+				"Can't update Rep Cap!\n");
 	}
 
 	/* Catch Increasing FullCap*/
@@ -1860,7 +1812,6 @@ static void iterm_work(struct work_struct *work)
 				"Can't update Rep Cap!\n");
 	}
 
-	chip->last_fullcap = repcap;
 
 	dev_warn(&chip->client->dev, "Taper Reached!\n");
 	dev_warn(&chip->client->dev, "RepCap %d mAhr FullCap %d mAhr\n",
@@ -1959,7 +1910,6 @@ static int max17042_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	chip->last_fullcap = -EINVAL;
 	chip->factory_mode = false;
 	chip->charge_full_des =
 		(chip->pdata->config_data->design_cap / 2) * 1000;
@@ -2064,13 +2014,13 @@ static int max17042_probe(struct i2c_client *client,
 	reg2 = max17042_read_reg(chip->client, MAX17050_CFG_REV_REG);
 	reg2 &= MAX17050_CFG_REV_MASK;
 
-	INIT_WORK(&chip->work, max17042_init_worker);
-
 	if (reg & STATUS_POR_BIT) {
 		dev_warn(&client->dev, "POR Detected, Loading Config\n");
+		INIT_WORK(&chip->work, max17042_init_worker);
 		schedule_work(&chip->work);
 	} else if (reg2 != chip->pdata->config_data->revision) {
 		dev_warn(&client->dev, "Revision Change, Loading Config\n");
+		INIT_WORK(&chip->work, max17042_init_worker);
 		schedule_work(&chip->work);
 	} else {
 		config = chip->pdata->config_data;
