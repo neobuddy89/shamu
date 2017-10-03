@@ -1082,12 +1082,14 @@ static void __ref do_core_control(long temp)
 				continue;
 			if (cpus_offlined & BIT(i) && !cpu_online(i))
 				continue;
-			pr_info("Set Offline: CPU%d Temp: %ld\n",
+			pr_debug("Set Offline: CPU%d Temp: %ld\n",
 					i, temp);
 			ret = cpu_down(i);
 			if (ret)
-				pr_err("Error %d offline core %d\n",
+				pr_err("Error %d offlining core %d\n",
 					ret, i);
+			else
+				pr_info("Set Offline CPU:%d\n", i);
 			cpus_offlined |= BIT(i);
 			break;
 		}
@@ -1108,11 +1110,12 @@ static void __ref do_core_control(long temp)
 				continue;
 			ret = cpu_up(i);
 			if (ret)
-				pr_err("Error %d online core %d\n",
-						ret, i);
+				pr_err("Error %d onlining core %d\n",
+					ret, i);
 			else {
 				struct device *cpu_device = get_cpu_device(i);
 				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
+				pr_info("Allow Online CPU:%d\n", i);
 			}
 			break;
 		}
@@ -1158,12 +1161,12 @@ static int __ref update_offline_cores(int val)
 				continue;
 			ret = cpu_down(cpu);
 			if (ret)
-				pr_err("Unable to offline CPU%d. err:%d\n",
-					cpu, ret);
+				pr_err("Error %d offlining core %d\n",
+					ret, cpu);
 			else {
 				struct device *cpu_device = get_cpu_device(cpu);
 				kobject_uevent(&cpu_device->kobj, KOBJ_OFFLINE);
-				pr_debug("Offlined CPU%d\n", cpu);
+				pr_info("Set Offline CPU:%d\n", cpu);
 		        }
 		} else if (online_core && (previous_cpus_offlined & BIT(cpu))) {
 			if (cpu_online(cpu))
@@ -1173,12 +1176,12 @@ static int __ref update_offline_cores(int val)
 				pr_debug("Onlining CPU%d is vetoed\n", cpu);
 			} else if (ret) {
 				cpus_offlined |= BIT(cpu);
-				pr_err("Unable to online CPU%d. err:%d\n",
-					cpu, ret);
+				pr_err("Error %d onlining core %d\n",
+					ret, cpu);
 			} else {
 				struct device *cpu_device = get_cpu_device(cpu);
 				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
-				pr_debug("Onlined CPU%d\n", cpu);
+				pr_info("Allow Online CPU:%d\n", cpu);
 			}
 		}
 	}
