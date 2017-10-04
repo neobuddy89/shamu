@@ -187,6 +187,8 @@ static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
 static bool bcl_hit_shutdown_voltage;
 
+static int previous_thres_type = 0;
+
 static int bcl_battery_get_property(struct power_supply *psy,
 				enum power_supply_property prop,
 				union power_supply_propval *val)
@@ -218,10 +220,26 @@ static void power_supply_callback(struct power_supply *psy)
 		bcl_config_vph_adc(gbcl, BCL_HIGH_THRESHOLD_TYPE);
 }
 
+static void update_cpu_freq(void)
+{
+	int cpu, ret = 0;
+
+	get_online_cpus();
+	for_each_online_cpu(cpu) {
+		ret = cpufreq_update_policy(cpu);
+		if (ret)
+			pr_err("Error updating policy for CPU%d. ret:%d\n",
+				cpu, ret);
+	}
+	put_online_cpus();
+}
+
 static void __ref bcl_handle_hotplug(void)
 {
 	int ret = 0, _cpu = 0;
 	uint32_t prev_hotplug_request = 0;
+
+	update_cpu_freq();
 
 	mutex_lock(&bcl_hotplug_mutex);
 	prev_hotplug_request = bcl_hotplug_request;
@@ -325,19 +343,6 @@ static struct notifier_block bcl_cpufreq_notifier = {
 	.notifier_call = bcl_cpufreq_callback,
 };
 
-static void update_cpu_freq(void)
-{
-	int cpu, ret = 0;
-
-	get_online_cpus();
-	for_each_online_cpu(cpu) {
-		ret = cpufreq_update_policy(cpu);
-		if (ret)
-			pr_err("Error updating policy for CPU%d. ret:%d\n",
-				cpu, ret);
-	}
-	put_online_cpus();
-}
 static int bcl_get_battery_voltage(int *vbatt)
 {
 	static struct power_supply *psy;
@@ -363,36 +368,54 @@ static int bcl_get_battery_voltage(int *vbatt)
 
 static void battery_monitor_work(struct work_struct *work)
 {
-	int vbatt;
+	int vbatt, thres_type;
 	struct bcl_context *bcl = container_of(work,
 			struct bcl_context, battery_monitor_work);
 
-	if (gbcl->bcl_mode == BCL_DEVICE_ENABLED) {
-		bcl->btm_mode = BCL_VPH_MONITOR_MODE;
-		update_cpu_freq();
-		bcl_handle_hotplug();
-		bcl_get_battery_voltage(&vbatt);
-		pr_debug("vbat is %d\n", vbatt);
-		if (bcl_vph_state == BCL_LOW_THRESHOLD) {
-			if (vbatt <= gbcl->btm_vph_low_thresh) {
-				/*relay the notification to smb135x driver*/
-				if (bcl->btm_smb135x_low_thresh ==
-					gbcl->btm_vph_adc_param.low_thr) {
-					if ((vbatt/1000) <
-						bcl->btm_smb135x_low_gauge_mv) {
-						pr_info("Hit shutdown voltage\n");
-						bcl_hit_shutdown_voltage = true;
-					}
-				} else
-				bcl_config_vph_adc(gbcl,
-					BCL_LOW_THRESHOLD_TYPE_MIN);
-			} else
-				bcl_config_vph_adc(gbcl,
-					BCL_HIGH_THRESHOLD_TYPE);
-		} else {
-			bcl_config_vph_adc(gbcl, BCL_LOW_THRESHOLD_TYPE);
+	if (gbcl->bcl_mode != BCL_DEVICE_ENABLED)
+		return;
+
+	bcl->btm_mode = BCL_VPH_MONITOR_MODE;
+
+	bcl_get_battery_voltage(&vbatt);
+	pr_debug("vbat is %d\n", vbatt);
+
+	if (vbatt <= gbcl->btm_vph_low_thresh)
+		thres_type = 0;
+	else if ((vbatt  > gbcl->btm_vph_low_thresh) &&
+		(vbatt <= gbcl->btm_vph_high_thresh))
+		thres_type = 1;
+	else
+		thres_type = 2;
+
+	if (thres_type == previous_thres_type)
+		return;
+
+	switch (thres_type) {
+	case 0:
+		/*relay the notification to smb135x driver*/
+		if (bcl->btm_smb135x_low_thresh ==
+			gbcl->btm_vph_adc_param.low_thr) {
+			if ((vbatt/1000) < bcl->btm_smb135x_low_gauge_mv) {
+				pr_info("Hit shutdown voltage\n");
+				bcl_hit_shutdown_voltage = true;
+			} else {
+				bcl_config_vph_adc(gbcl, BCL_LOW_THRESHOLD_TYPE_MIN);
+			}
 		}
+		break;
+	case 1:
+		bcl_config_vph_adc(gbcl, BCL_LOW_THRESHOLD_TYPE);
+		break;
+	case 2:
+		bcl_config_vph_adc(gbcl, BCL_HIGH_THRESHOLD_TYPE);
+		break;
+	default:
+		break;
 	}
+
+	previous_thres_type = thres_type;
+	bcl_handle_hotplug();
 }
 
 static void bcl_vph_notify(enum bcl_threshold_state thresh_type)
@@ -505,8 +528,6 @@ static int vph_disable(void)
 vph_disable_exit:
 	return ret;
 }
-
-
 
 static void bcl_vph_notification(enum qpnp_tm_state state, void *ctx)
 {
