@@ -1066,6 +1066,36 @@ static void therm_reset_notify(struct therm_threshold *thresh_data)
 }
 
 #ifdef CONFIG_SMP
+static void check_core_control(void)
+{
+	int i = 0;
+	int ret = 0;
+
+	if (core_control_enabled) {
+		schedule_delayed_work(&check_temp_work, 0);
+		return;
+	}
+
+	mutex_lock(&core_control_mutex);
+	for_each_possible_cpu(i) {
+		if (cpu_online(i)
+			|| !(cpus_offlined & BIT(i)))
+			continue;
+		ret = cpu_up(i);
+		if (ret) {
+			pr_err("Error %d onlining core %d\n",
+				ret, i);
+		} else {
+			struct device *cpu_device = get_cpu_device(i);
+			kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
+			pr_info("Allow Online CPU:%d\n", i);
+		}
+		cpus_offlined &= ~BIT(i);
+	}
+	mutex_unlock(&core_control_mutex);
+	return;
+}
+
 static void __ref do_core_control(long temp)
 {
 	int i = 0;
@@ -1089,7 +1119,7 @@ static void __ref do_core_control(long temp)
 				pr_err("Error %d offlining core %d\n",
 					ret, i);
 			else
-				pr_info("Set Offline CPU:%d\n", i);
+				pr_info("Set Offline CPU:%d Temp: %ld\n", i, temp);
 			cpus_offlined |= BIT(i);
 			break;
 		}
@@ -1100,7 +1130,7 @@ static void __ref do_core_control(long temp)
 			if (!(cpus_offlined & BIT(i)))
 				continue;
 			cpus_offlined &= ~BIT(i);
-			pr_info("Allow Online CPU%d Temp: %ld\n",
+			pr_debug("Allow Online CPU%d Temp: %ld\n",
 					i, temp);
 			/*
 			 * If this core is already online, then bring up the
@@ -1115,7 +1145,7 @@ static void __ref do_core_control(long temp)
 			else {
 				struct device *cpu_device = get_cpu_device(i);
 				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
-				pr_info("Allow Online CPU:%d\n", i);
+				pr_info("Allow Online CPU:%d Temp: %ld\n", i, temp);
 			}
 			break;
 		}
@@ -1227,6 +1257,11 @@ static __ref int do_hotplug(void *data)
 	return ret;
 }
 #else
+static void check_core_control(void)
+{
+	return;
+}
+
 static void __ref do_core_control(long temp)
 {
 	return;
@@ -1562,12 +1597,16 @@ reschedule:
 static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 		unsigned long action, void *hcpu)
 {
-	uint32_t cpu = (uint32_t)hcpu;
+	uint32_t cpu;
+
+	if (!core_control_enabled)
+		return NOTIFY_OK;
+
+	cpu = (uint32_t)hcpu;
 
 	switch (action & ~CPU_TASKS_FROZEN) {
 	case CPU_UP_PREPARE:
-		if (core_control_enabled &&
-			(msm_thermal_info.core_control_mask & BIT(cpu)) &&
+		if ((msm_thermal_info.core_control_mask & BIT(cpu)) &&
 			(cpus_offlined & BIT(cpu))) {
 			pr_debug("Preventing CPU%d from coming online.\n",
 				cpu);
@@ -1575,8 +1614,7 @@ static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 		}
 		break;
 	case CPU_ONLINE:
-		if (core_control_enabled &&
-			(msm_thermal_info.core_control_mask & BIT(cpu)) &&
+		if ((msm_thermal_info.core_control_mask & BIT(cpu)) &&
 			(cpus_offlined & BIT(cpu))) {
 			pr_debug("CPU%d online. reevaluate hotplug\n", cpu);
 			schedule_delayed_work(&check_temp_work, 0);
@@ -1592,6 +1630,7 @@ static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 static struct notifier_block __refdata msm_thermal_cpu_notifier = {
 	.notifier_call = msm_thermal_cpu_callback,
 };
+
 static int hotplug_notify(enum thermal_trip_type type, int temp, void *data)
 {
 	struct cpu_info *cpu_node = (struct cpu_info *)data;
@@ -1619,6 +1658,7 @@ static int hotplug_notify(enum thermal_trip_type type, int temp, void *data)
 		pr_err("Hotplug task is not initialized\n");
 	return 0;
 }
+
 /* Adjust cpus offlined bit based on temperature reading. */
 static int hotplug_init_cpu_offlined(void)
 {
@@ -2492,6 +2532,7 @@ static ssize_t __ref store_cc_enabled(struct kobject *kobj,
 		pr_info("Core control disabled\n");
 		unregister_cpu_notifier(&msm_thermal_cpu_notifier);
 	}
+	check_core_control();
 
 done_store_cc:
 	return count;
