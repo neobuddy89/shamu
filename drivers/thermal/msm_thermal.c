@@ -1066,7 +1066,7 @@ static void therm_reset_notify(struct therm_threshold *thresh_data)
 }
 
 #ifdef CONFIG_SMP
-static void check_core_control(void)
+static void __ref check_core_control(void)
 {
 	int i = 0;
 	int ret = 0;
@@ -1078,11 +1078,14 @@ static void check_core_control(void)
 
 	mutex_lock(&core_control_mutex);
 	for_each_possible_cpu(i) {
-		if (cpu_online(i)
-			|| !(cpus_offlined & BIT(i)))
+		if (!(cpus_offlined & BIT(i)))
+			continue;
+		cpus_offlined &= ~BIT(i);
+		if (cpu_online(i))
 			continue;
 		ret = cpu_up(i);
 		if (ret) {
+			cpus_offlined |= BIT(i);
 			pr_err("Error %d onlining core %d\n",
 				ret, i);
 		} else {
@@ -1090,7 +1093,6 @@ static void check_core_control(void)
 			kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 			pr_info("Allow Online CPU:%d\n", i);
 		}
-		cpus_offlined &= ~BIT(i);
 	}
 	mutex_unlock(&core_control_mutex);
 	return;
@@ -1101,8 +1103,10 @@ static void __ref do_core_control(long temp)
 	int i = 0;
 	int ret = 0;
 
-	if (!core_control_enabled)
+	if (!core_control_enabled) {
+		check_core_control();
 		return;
+	}
 
 	mutex_lock(&core_control_mutex);
 	if (msm_thermal_info.core_control_mask &&
@@ -1110,17 +1114,21 @@ static void __ref do_core_control(long temp)
 		for (i = num_possible_cpus(); i > 0; i--) {
 			if (!(msm_thermal_info.core_control_mask & BIT(i)))
 				continue;
-			if (cpus_offlined & BIT(i) && !cpu_online(i))
+			if (cpus_offlined & BIT(i))
+				continue;
+			cpus_offlined |= BIT(i);
+			if (!cpu_online(i))
 				continue;
 			pr_debug("Set Offline: CPU%d Temp: %ld\n",
 					i, temp);
 			ret = cpu_down(i);
-			if (ret)
+			if (ret) {
+				cpus_offlined &= ~BIT(i);
 				pr_err("Error %d offlining core %d\n",
 					ret, i);
-			else
+			} else {
 				pr_info("Set Offline CPU:%d Temp: %ld\n", i, temp);
-			cpus_offlined |= BIT(i);
+			}
 			break;
 		}
 	} else if (msm_thermal_info.core_control_mask && cpus_offlined &&
@@ -1139,10 +1147,11 @@ static void __ref do_core_control(long temp)
 			if (cpu_online(i))
 				continue;
 			ret = cpu_up(i);
-			if (ret)
+			if (ret) {
+				cpus_offlined |= BIT(i);
 				pr_err("Error %d onlining core %d\n",
 					ret, i);
-			else {
+			} else {
 				struct device *cpu_device = get_cpu_device(i);
 				kobject_uevent(&cpu_device->kobj, KOBJ_ONLINE);
 				pr_info("Allow Online CPU:%d Temp: %ld\n", i, temp);
@@ -1187,18 +1196,21 @@ static int __ref update_offline_cores(int val)
 
 	for_each_possible_cpu(cpu) {
 		if (cpus_offlined & BIT(cpu)) {
+			cpus_offlined |= BIT(cpu);
 			if (!cpu_online(cpu))
 				continue;
 			ret = cpu_down(cpu);
-			if (ret)
+			if (ret) {
+				cpus_offlined &= ~BIT(cpu);
 				pr_err("Error %d offlining core %d\n",
 					ret, cpu);
-			else {
+			} else {
 				struct device *cpu_device = get_cpu_device(cpu);
 				kobject_uevent(&cpu_device->kobj, KOBJ_OFFLINE);
 				pr_info("Set Offline CPU:%d\n", cpu);
 		        }
 		} else if (online_core && (previous_cpus_offlined & BIT(cpu))) {
+			cpus_offlined &= ~BIT(cpu);
 			if (cpu_online(cpu))
 				continue;
 			ret = cpu_up(cpu);
@@ -1257,7 +1269,7 @@ static __ref int do_hotplug(void *data)
 	return ret;
 }
 #else
-static void check_core_control(void)
+static void __ref check_core_control(void)
 {
 	return;
 }
@@ -1610,6 +1622,8 @@ static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 			(cpus_offlined & BIT(cpu))) {
 			pr_debug("Preventing CPU%d from coming online.\n",
 				cpu);
+			schedule_delayed_work(&check_temp_work,
+				msecs_to_jiffies(msm_thermal_info.poll_ms));
 			return NOTIFY_BAD;
 		}
 		break;
