@@ -1072,7 +1072,8 @@ static void __ref check_core_control(void)
 	int ret = 0;
 
 	if (core_control_enabled) {
-		schedule_delayed_work(&check_temp_work, 0);
+		if (polling_enabled)
+			schedule_delayed_work(&check_temp_work, 0);
 		return;
 	}
 
@@ -1574,7 +1575,7 @@ static void check_temp(struct work_struct *work)
 	int ret = 0;
 
 	if (!msm_thermal_probed)
-		return;
+		goto reschedule;
 
 	do_therm_reset();
 
@@ -1622,8 +1623,9 @@ static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 			(cpus_offlined & BIT(cpu))) {
 			pr_debug("Preventing CPU%d from coming online.\n",
 				cpu);
-			schedule_delayed_work(&check_temp_work,
-				msecs_to_jiffies(msm_thermal_info.poll_ms));
+			if (polling_enabled)
+				schedule_delayed_work(&check_temp_work,
+					msecs_to_jiffies(msm_thermal_info.poll_ms));
 			return NOTIFY_BAD;
 		}
 		break;
@@ -1631,7 +1633,8 @@ static int __ref msm_thermal_cpu_callback(struct notifier_block *nfb,
 		if ((msm_thermal_info.core_control_mask & BIT(cpu)) &&
 			(cpus_offlined & BIT(cpu))) {
 			pr_debug("CPU%d online. reevaluate hotplug\n", cpu);
-			schedule_delayed_work(&check_temp_work, 0);
+			if (polling_enabled)
+				schedule_delayed_work(&check_temp_work, 0);
 		}
 		break;
 	default:
