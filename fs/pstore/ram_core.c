@@ -609,9 +609,9 @@ void *persistent_ram_map(phys_addr_t start, phys_addr_t size)
 	void *vaddr;
 
 	if (pfn_valid(start >> PAGE_SHIFT))
-		vaddr = persistent_ram_vmap(start, size, 0);
+		vaddr = persistent_ram_vmap(start, size, 1);
 	else
-		vaddr = persistent_ram_iomap(start, size, 0);
+		vaddr = persistent_ram_iomap(start, size, 1);
 	return vaddr;
 }
 
