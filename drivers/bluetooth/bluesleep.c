@@ -77,8 +77,6 @@
 /* enable/disable wake-on-bluetooth */
 #define BT_ENABLE_IRQ_WAKE 1
 
-#define BT_BLUEDROID_SUPPORT 1
-
 enum {
 	DEBUG_USER_STATE = 1U << 0,
 	DEBUG_SUSPEND = 1U << 1,
@@ -125,17 +123,10 @@ DECLARE_DELAYED_WORK(sleep_workqueue, bluesleep_sleep_work);
 #define PROC_HOSTWAKE	1
 #define PROC_PROTO	2
 #define PROC_ASLEEP	3
-#if BT_BLUEDROID_SUPPORT
 #define PROC_LPM	4
 #define PROC_BTWRITE	5
-#endif
 
-#if BT_BLUEDROID_SUPPORT
 static bool has_lpm_enabled;
-#else
-/* global pointer to a single hci device. */
-static struct hci_dev *bluesleep_hdev;
-#endif
 
 static struct platform_device *bluesleep_uart_dev;
 static struct bluesleep_info *bsi;
@@ -146,10 +137,6 @@ static atomic_t open_count = ATOMIC_INIT(1);
 /*
  * Local function prototypes
  */
-#if !BT_BLUEDROID_SUPPORT
-static int bluesleep_hci_event(struct notifier_block *this,
-			unsigned long event, void *data);
-#endif
 static int bluesleep_start(void);
 static void bluesleep_stop(void);
 
@@ -169,13 +156,6 @@ static DEFINE_TIMER(tx_timer, bluesleep_tx_timer_expire, 0, 0);
 
 /** Lock for state transitions */
 static spinlock_t rw_lock;
-
-#if !BT_BLUEDROID_SUPPORT
-/** Notifier block for HCI events */
-struct notifier_block hci_event_nblock = {
-	.notifier_call = bluesleep_hci_event,
-};
-#endif
 
 struct proc_dir_entry *bluetooth_dir, *sleep_dir;
 
@@ -309,51 +289,6 @@ static void bluesleep_outgoing_data(void)
 		bluesleep_sleep_wakeup();
 	}
 }
-
-
-#if !BT_BLUEDROID_SUPPORT
-/**
- * Handles HCI device events.
- * @param this Not used.
- * @param event The event that occurred.
- * @param data The HCI device associated with the event.
- * @return <code>NOTIFY_DONE</code>.
- */
-static int bluesleep_hci_event(struct notifier_block *this,
-				unsigned long event, void *data)
-{
-	struct hci_dev *hdev = (struct hci_dev *) data;
-	struct hci_uart *hu;
-	struct uart_state *state;
-
-	if (!hdev)
-		return NOTIFY_DONE;
-
-	switch (event) {
-	case HCI_DEV_REG:
-		if (!bluesleep_hdev) {
-			bluesleep_hdev = hdev;
-			hu  = (struct hci_uart *) hdev->driver_data;
-			state = (struct uart_state *) hu->tty->driver_data;
-			bsi->uport = state->uart_port;
-			/* if bluetooth started, start bluesleep*/
-			bluesleep_start();
-		}
-		break;
-	case HCI_DEV_UNREG:
-		bluesleep_stop();
-		bluesleep_hdev = NULL;
-		bsi->uport = NULL;
-		/* if bluetooth stopped, stop bluesleep also */
-		break;
-	case HCI_DEV_WRITE:
-		bluesleep_outgoing_data();
-		break;
-	}
-
-	return NOTIFY_DONE;
-}
-#endif
 
 /**
  * Handles transmission timer expiration.
@@ -708,6 +643,14 @@ static int bluesleep_proc_show(struct seq_file *m, void *v)
 		seq_printf(m, "asleep: %u\n",
 				test_bit(BT_ASLEEP, &flags) ? 1 : 0);
 		break;
+	case PROC_LPM:
+		seq_printf(m, "lpm: %u\n",
+				test_bit(has_lpm_enabled, &flags) ? 1 : 0);
+		break;
+	case PROC_BTWRITE:
+		seq_printf(m, "btwrite: %u\n",
+				test_bit(BT_TXDATA, &flags) ? 1 : 0);
+		break;
 	default:
 		return 0;
 	}
@@ -813,10 +756,6 @@ static int __init bluesleep_init(void)
 	if (bsi == NULL)
 		return 0;
 
-#if !BT_BLUEDROID_SUPPORT
-	bluesleep_hdev = NULL;
-#endif
-
 	bluetooth_dir = proc_mkdir("bluetooth", NULL);
 	if (bluetooth_dir == NULL) {
 		BT_ERR("Unable to create /proc/bluetooth directory");
@@ -869,7 +808,6 @@ static int __init bluesleep_init(void)
 		goto fail;
 	}
 
-#if BT_BLUEDROID_SUPPORT
 	/* read/write proc entries */
 	ent = proc_create_data("lpm", S_IRUGO | S_IWUSR | S_IWGRP,
 			sleep_dir, &bluesleep_proc_readwrite_fops,
@@ -890,8 +828,6 @@ static int __init bluesleep_init(void)
 		goto fail;
 	}
 
-#endif
-
 	flags = 0; /* clear all status bits */
 
 	/* Initialize spinlock. */
@@ -911,17 +847,12 @@ static int __init bluesleep_init(void)
 	if (bsi->has_ext_wake == 1)
 		gpio_set_value(bsi->ext_wake, 0);
 	clear_bit(BT_EXT_WAKE, &flags);
-#if !BT_BLUEDROID_SUPPORT
-	hci_register_notifier(&hci_event_nblock);
-#endif
 
 	return 0;
 
 fail:
-#if BT_BLUEDROID_SUPPORT
 	remove_proc_entry("btwrite", sleep_dir);
 	remove_proc_entry("lpm", sleep_dir);
-#endif
 	remove_proc_entry("asleep", sleep_dir);
 	remove_proc_entry("proto", sleep_dir);
 	remove_proc_entry("hostwake", sleep_dir);
@@ -952,15 +883,10 @@ static void __exit bluesleep_exit(void)
 			hsuart_power(1);
 	}
 
-#if !BT_BLUEDROID_SUPPORT
-	hci_unregister_notifier(&hci_event_nblock);
-#endif
 	platform_driver_unregister(&bluesleep_driver);
 
-#if BT_BLUEDROID_SUPPORT
 	remove_proc_entry("btwrite", sleep_dir);
 	remove_proc_entry("lpm", sleep_dir);
-#endif
 	remove_proc_entry("asleep", sleep_dir);
 	remove_proc_entry("proto", sleep_dir);
 	remove_proc_entry("hostwake", sleep_dir);
