@@ -187,6 +187,8 @@ static struct power_supply bcl_psy;
 static const char bcl_psy_name[] = "bcl";
 static bool bcl_hit_shutdown_voltage;
 
+static uint32_t cpus_offlined;
+
 static int bcl_battery_get_property(struct power_supply *psy,
 				enum power_supply_property prop,
 				union power_supply_propval *val)
@@ -218,13 +220,26 @@ static void power_supply_callback(struct power_supply *psy)
 		bcl_config_vph_adc(gbcl, BCL_HIGH_THRESHOLD_TYPE);
 }
 
+static void update_cpu_freq(void)
+{
+	int cpu, ret = 0;
+
+	get_online_cpus();
+	for_each_online_cpu(cpu) {
+		ret = cpufreq_update_policy(cpu);
+		if (ret)
+			pr_err("Error updating policy for CPU%d. ret:%d\n",
+				cpu, ret);
+	}
+	put_online_cpus();
+}
+
 static void __ref bcl_handle_hotplug(void)
 {
 	int ret = 0, _cpu = 0;
-	uint32_t prev_hotplug_request = 0;
+	uint32_t previous_cpus_offlined = 0;
 
 	mutex_lock(&bcl_hotplug_mutex);
-	prev_hotplug_request = bcl_hotplug_request;
 
 	if (gbcl->bcl_mode == BCL_DEVICE_DISABLED)
 		bcl_hotplug_request = 0;
@@ -233,39 +248,47 @@ static void __ref bcl_handle_hotplug(void)
 	else
 		bcl_hotplug_request = 0;
 
-	if (bcl_hotplug_request == prev_hotplug_request)
-		goto handle_hotplug_exit;
+	previous_cpus_offlined = cpus_offlined;
+	cpus_offlined = bcl_hotplug_request;
 
 	for_each_possible_cpu(_cpu) {
-		if (!(bcl_hotplug_mask & BIT(_cpu)))
-			continue;
-
-		if (bcl_hotplug_request & BIT(_cpu)) {
+		if (cpus_offlined & BIT(_cpu)) {
+			cpus_offlined |= BIT(_cpu);
 			if (!cpu_online(_cpu))
 				continue;
 			ret = cpu_down(_cpu);
-			if (ret)
+			if (ret) {
+				cpus_offlined &= ~BIT(_cpu);
 				pr_err("Error %d offlining core %d\n",
 					ret, _cpu);
-			else
+			} else {
+				struct device *cpu_device = get_cpu_device(_cpu);
+				kobject_uevent(&cpu_device->kobj, KOBJ_OFFLINE);
 				pr_info("Set Offline CPU:%d\n", _cpu);
-		} else {
-			if (cpu_online(_cpu)
-				|| !(prev_hotplug_request & BIT(_cpu)))
+			}
+		} else if (previous_cpus_offlined & BIT(_cpu)) {
+			cpus_offlined &= ~BIT(_cpu);
+			if (cpu_online(_cpu))
 				continue;
 			ret = cpu_up(_cpu);
-			if (ret)
+			if (ret && ret == notifier_to_errno(NOTIFY_BAD)) {
+				pr_debug("Onlining CPU%d is vetoed\n", _cpu);
+			} else if (ret) {
+				cpus_offlined |= BIT(_cpu);
 				pr_err("Error %d onlining core %d\n",
 					ret, _cpu);
-			else
+			} else {
 				pr_info("Allow Online CPU:%d\n", _cpu);
+			}
 		}
 	}
-
-handle_hotplug_exit:
 	mutex_unlock(&bcl_hotplug_mutex);
+
+	update_cpu_freq();
+
 	return;
 }
+
 static int __ref bcl_cpu_ctrl_callback(struct notifier_block *nfb,
 	unsigned long action, void *hcpu)
 {
@@ -325,19 +348,6 @@ static struct notifier_block bcl_cpufreq_notifier = {
 	.notifier_call = bcl_cpufreq_callback,
 };
 
-static void update_cpu_freq(void)
-{
-	int cpu, ret = 0;
-
-	get_online_cpus();
-	for_each_online_cpu(cpu) {
-		ret = cpufreq_update_policy(cpu);
-		if (ret)
-			pr_err("Error updating policy for CPU%d. ret:%d\n",
-				cpu, ret);
-	}
-	put_online_cpus();
-}
 static int bcl_get_battery_voltage(int *vbatt)
 {
 	static struct power_supply *psy;
@@ -369,7 +379,6 @@ static void battery_monitor_work(struct work_struct *work)
 
 	if (gbcl->bcl_mode == BCL_DEVICE_ENABLED) {
 		bcl->btm_mode = BCL_VPH_MONITOR_MODE;
-		update_cpu_freq();
 		bcl_handle_hotplug();
 		bcl_get_battery_voltage(&vbatt);
 		pr_debug("vbat is %d\n", vbatt);
