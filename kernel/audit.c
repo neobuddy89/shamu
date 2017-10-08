@@ -86,7 +86,7 @@ EXPORT_SYMBOL_GPL(audit_enabled);
 static int	audit_default;
 
 /* If auditing cannot proceed, audit_failure selects what happens. */
-static int	audit_failure = AUDIT_FAIL_PRINTK;
+static int	audit_failure = AUDIT_FAIL_SILENT;
 
 /*
  * If audit records are to be written to the netlink socket, audit_pid
